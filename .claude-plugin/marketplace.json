@@ -1,0 +1,17 @@
+{
+  "name": "razamit",
+  "description": "Claude Code plugins by Amit Razam.",
+  "owner": {
+    "name": "Amit Razam",
+    "url": "https://github.com/razamit"
+  },
+  "plugins": [
+    {
+      "name": "config-history",
+      "source": "./",
+      "description": "Keeps a versioned history of your Claude Code configuration so you can see what changed and restore an earlier version.",
+      "category": "productivity",
+      "tags": ["config", "backup", "restore"]
+    }
+  ]
+}

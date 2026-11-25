@@ -1,0 +1,31 @@
+#!/bin/sh
+# config-history: runs the config-history tool from the plugin's private
+# Python environment. The plugin's SessionStart hook writes the path of that
+# environment's Python to the pointer file read below.
+
+# CLAUDE_CFG_HOME counts only as an absolute path, the same as in the tool
+# itself. A relative value would make the wrapper read a pointer file from
+# whatever folder it runs in.
+tool_home="${CLAUDE_CFG_HOME:-}"
+case "$tool_home" in
+    /* | [A-Za-z]:[\\/]* | \\\\*) ;;
+    *) tool_home="$HOME/.claude-cfg" ;;
+esac
+pointer_file="$tool_home/plugin-python"
+
+venv_python=""
+if [ -r "$pointer_file" ]; then
+    IFS= read -r venv_python < "$pointer_file" || true
+fi
+# A pointer file with Windows line endings leaves a carriage return behind.
+carriage_return=$(printf '\r')
+venv_python="${venv_python%"$carriage_return"}"
+
+if [ -z "$venv_python" ] || [ ! -f "$venv_python" ]; then
+    echo "config-history is still setting up or was not set up. Start a new Claude Code session, then try again." >&2
+    exit 1
+fi
+
+CLAUDE_CFG_PROGRAM_NAME=config-history
+export CLAUDE_CFG_PROGRAM_NAME
+exec "$venv_python" -I -m claude_cfg "$@"
