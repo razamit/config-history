@@ -128,6 +128,18 @@ def test_expand_referenced_files_picks_up_script(tmp_path):
     assert "statusline-command.py" in result
 
 
+def test_expand_referenced_files_reads_json_escaped_backslash_paths(tmp_path):
+    """A JSON settings file on Windows holds C:\\\\Users\\\\me\\\\.claude\\\\x.py in its text."""
+    backslashed = str(tmp_path).replace("/", "\\") + "\\hooks\\guard.py"
+    (tmp_path / "settings.json").write_text(json.dumps({"hooks": {"command": f"python {backslashed}"}}))
+    assert "\\\\hooks\\\\guard.py" in (tmp_path / "settings.json").read_text()
+    (tmp_path / "hooks").mkdir()
+    (tmp_path / "hooks" / "guard.py").write_text("# hook")
+
+    result = core._expand_referenced_files(["settings.json"], tmp_path)
+    assert "hooks/guard.py" in result
+
+
 def test_expand_referenced_files_skips_missing(tmp_path):
     (tmp_path / "settings.json").write_text(
         '{"cmd": "~/.claude/ghost.py"}'

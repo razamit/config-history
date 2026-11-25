@@ -16,16 +16,33 @@ from claude_cfg.path_identity import path_identity
 from claude_cfg.paths import CLAUDE_TOKEN
 
 
+_SEPARATORS = r"[/\\]+"
+
+
+def _any_separator_pattern(path_text: str) -> str:
+    """``path_text`` as a regex that accepts any run of / or \\ between parts.
+
+    The file is read as raw text, so a JSON file spells a Windows path with
+    doubled backslashes (``C:\\\\Users\\\\me``); this matches that spelling,
+    the native one and the forward-slash one alike.
+    """
+    return _SEPARATORS.join(re.escape(part) for part in re.split(_SEPARATORS, path_text))
+
+
 def _reference_pattern(claude_dir: Path) -> re.Pattern:
     """Match references to files under .claude by any spelling a config may use:
     the ~/.claude shortcut, the ${CLAUDE_HOME} token, or an absolute path."""
     bases = [
-        re.escape(str(claude_dir)),
-        re.escape(claude_dir.as_posix()),
-        re.escape("~/.claude"),
+        _any_separator_pattern(str(claude_dir)),
+        _any_separator_pattern("~/.claude"),
         re.escape(CLAUDE_TOKEN),
     ]
-    return re.compile(r"(?:" + "|".join(bases) + r")[/\\]([\w./\\-]+)", re.IGNORECASE)
+    return re.compile(r"(?:" + "|".join(bases) + r")" + _SEPARATORS + r"([\w./\\-]+)", re.IGNORECASE)
+
+
+def _relative_reference(captured: str) -> str:
+    """The captured tail as a posix path, with doubled separators collapsed."""
+    return re.sub(_SEPARATORS, "/", captured)
 
 
 def expand_referenced_files(tracked: list[str], claude_dir: Path) -> list[str]:
@@ -51,7 +68,7 @@ def _references_in(path: Path, claude_dir: Path) -> set[str]:
     base = claude_dir.resolve()
     found: set[str] = set()
     for match in _reference_pattern(claude_dir).finditer(text):
-        referenced_path = (claude_dir / match.group(1).replace("\\", "/")).resolve()
+        referenced_path = (claude_dir / _relative_reference(match.group(1))).resolve()
         try:
             safe_relative = referenced_path.relative_to(base)
         except ValueError:

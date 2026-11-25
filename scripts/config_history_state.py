@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import ntpath
 import os
+import posixpath
 import re
 import shutil
 from dataclasses import dataclass
@@ -76,8 +77,13 @@ class BootstrapPaths:
 
 
 def is_absolute_path(path: str) -> bool:
-    """True for a POSIX absolute path or a Windows drive or UNC path."""
-    return os.path.isabs(path) or (ntpath.isabs(path) and bool(ntpath.splitdrive(path)[0]))
+    """True for a POSIX absolute path or a Windows drive or UNC path.
+
+    The same three forms bin/config-history accepts, on every platform.
+    posixpath, not os.path: on Windows, Python 3.13 stopped counting
+    ``/srv/x`` as absolute, which made the answer depend on the version.
+    """
+    return posixpath.isabs(path) or (ntpath.isabs(path) and bool(ntpath.splitdrive(path)[0]))
 
 
 def resolve_tool_home(env: Mapping[str, str]) -> str:
