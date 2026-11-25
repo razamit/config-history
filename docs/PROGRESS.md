@@ -6,6 +6,26 @@ files touched, cross-refs to decisions and tickets. Never rewrite old entries.
 
 ---
 
+**2026-11-25: Pull request #8 opened against `main`; CI workflow fixed so the Linux 3.9 job can start (CI config only, no code). 🟡 PARTIAL**
+Trigger: the owner asked for the pull request so CI would run on the 0.3.0
+work for the first time. The first run (45671228537) failed before any test
+ran: "The version '3.9' with architecture 'x64' was not found for Ubuntu
+26.04." `ubuntu-latest` is now Ubuntu 26.04, `actions/python-versions` lists
+3.9.25 for Linux 22.04 and 24.04 only, and the matrix's default fail-fast
+cancelled the other 14 jobs ("The strategy configuration was canceled because
+test.ubuntu-latest_3_9 failed"), so that run says nothing about the code on
+any platform. Fix, chosen by the owner over dropping 3.9 on Linux: the Linux
+3.9 job runs on `ubuntu-24.04`, every other job stays where it was, and
+`fail-fast` is off so one job cannot cancel the rest. Proof so far: the
+workflow parses and its strategy block holds one exclude
+(`ubuntu-latest` + 3.9) and two includes (`ubuntu-24.04` + 3.9, and the
+existing macOS x64 one); `git merge-tree origin/main HEAD` still exits 0.
+Not known when this entry was written: the result of the run this commit
+starts. It is the first time the suite runs on Linux and Windows at all
+(`docs/tickets/plugin-launcher-untested-on-windows-and-linux.md`), so
+failures there would be new information, not a regression. The next entry
+records what it showed. Files: `.github/workflows/ci.yml`, this file.
+
 **2026-11-25: GitHub repository renamed to `razamit/config-history` (docs only in the repo, one change on GitHub, no code). ✅ DONE.**
 Carries out decision row 16. The easy-flow commit `700ed85` was pushed while
 the repository was still `razamit/claude-cfg`; the rename in GitHub's settings
