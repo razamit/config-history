@@ -6,26 +6,7 @@ import pytest
 
 from claude_cfg import core
 from claude_cfg import snapshot as snap
-from claude_cfg.providers.base import StorageProvider
-
-
-class MemoryProvider(StorageProvider):
-    def __init__(self):
-        self._store: dict[str, bytes] = {}
-
-    def upload(self, key: str, data: bytes) -> None:
-        self._store[key] = data
-
-    def download(self, key: str) -> bytes:
-        if key not in self._store:
-            raise FileNotFoundError(key)
-        return self._store[key]
-
-    def list_keys(self, prefix: str = "") -> list[str]:
-        return [k for k in self._store if k.startswith(prefix)]
-
-    def exists(self, key: str) -> bool:
-        return key in self._store
+from tests.memory_provider import MemoryProvider
 
 
 @pytest.fixture
@@ -76,10 +57,7 @@ def test_pull_restores_latest(cfg, fake_claude, tmp_path):
     with patch("claude_cfg.core.claude_dir", return_value=fake_claude):
         core.push("snap1", cfg, provider)
 
-    with (
-        patch("claude_cfg.core.claude_dir", return_value=restore_dir),
-        patch("claude_cfg.core._backup_current"),
-    ):
+    with patch("claude_cfg.core.claude_dir", return_value=restore_dir):
         result = core.pull(None, cfg, provider)
 
     assert result["id"] == 1
@@ -95,10 +73,7 @@ def test_pull_by_id(cfg, fake_claude, tmp_path):
         core.push("first", cfg, provider)
         core.push("second", cfg, provider)
 
-    with (
-        patch("claude_cfg.core.claude_dir", return_value=restore_dir),
-        patch("claude_cfg.core._backup_current"),
-    ):
+    with patch("claude_cfg.core.claude_dir", return_value=restore_dir):
         result = core.pull(1, cfg, provider)
 
     assert result["id"] == 1
@@ -111,8 +86,7 @@ def test_pull_invalid_id_raises(cfg, fake_claude):
         core.push("snap", cfg, provider)
 
     with pytest.raises(ValueError, match="not found"):
-        with patch("claude_cfg.core._backup_current"):
-            core.pull(99, cfg, provider)
+        core.pull(99, cfg, provider)
 
 
 def test_pull_empty_backend_raises(cfg):
@@ -127,9 +101,8 @@ def test_pull_refuses_newer_schema(cfg, fake_claude, monkeypatch):
         core.push("snap", cfg, provider)
 
     monkeypatch.setattr(snap, "SCHEMA_VERSION", 1)  # pretend the tool is older
-    with patch("claude_cfg.core._backup_current"):
-        with pytest.raises(RuntimeError, match="schema"):
-            core.pull(None, cfg, provider)
+    with pytest.raises(RuntimeError, match="schema"):
+        core.pull(None, cfg, provider)
 
 
 def test_pull_reports_platforms(cfg, fake_claude, tmp_path):
@@ -138,10 +111,7 @@ def test_pull_reports_platforms(cfg, fake_claude, tmp_path):
     restore_dir.mkdir()
     with patch("claude_cfg.core.claude_dir", return_value=fake_claude):
         core.push("snap", cfg, provider)
-    with (
-        patch("claude_cfg.core.claude_dir", return_value=restore_dir),
-        patch("claude_cfg.core._backup_current"),
-    ):
+    with patch("claude_cfg.core.claude_dir", return_value=restore_dir):
         result = core.pull(None, cfg, provider)
     assert "source_platform" in result
     assert "target_platform" in result
