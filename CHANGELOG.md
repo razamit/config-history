@@ -191,6 +191,11 @@ This section will be released as 0.3.0.
 - `config show` and `config set` also mask `passphrase` values.
 
 ### Fixed
+- On Windows, a script that `settings.json` names by its full path, such as
+  `"python C:\\Users\\me\\.claude\\statusline.py"`, was never added to a
+  snapshot, because JSON doubles the backslashes and the scan did not match
+  them. A restore on another machine then pointed at a missing file. The scan
+  now accepts any run of `/` or `\` between the parts of the path.
 - The plugin's install lock went stale after 15 minutes while the install
   steps may take 22, so a second install could start mid-build. It now goes
   stale after 30 minutes.

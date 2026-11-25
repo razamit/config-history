@@ -6,6 +6,64 @@ files touched, cross-refs to decisions and tickets. Never rewrite old entries.
 
 ---
 
+**2026-11-25: CI green on all 15 jobs for the first time; two real bugs found by the first run on Windows (code + tests + CI config, no spend). ✅ DONE [unreleased]**
+Continues the entry below, which ended with the result unknown. After the
+workflow fix, run 45671706290 ran the tests everywhere and was red on every
+job: Linux `4 failed, 618 passed, 2 skipped`, macOS `5 failed, 619 passed`,
+Windows `29 failed, 567 passed, 16 skipped` (30 failed on Python 3.13), and
+macOS 3.9 dead in setup (the x64 build of 3.9 cannot load its libraries on the
+arm64 runner). The owner chose to fix all of it, Windows included, and allowed
+fix commits to be pushed to the pull request branch. An implementer (Opus 5.5)
+classified every failure and needed 2 pushes of a budget of 4. Real bugs in
+the tool, both fixed in `2309a20`: (1) on Windows a script that
+`settings.json` names by its full path was never added to a snapshot, because
+the scan read the raw JSON, where backslashes are doubled, and the pattern did
+not match them, so a restore elsewhere pointed at a missing file
+(`claude_cfg/tracked_files.py`; new regression test in `tests/test_core.py`
+that fails without the fix on every system); this scan exists since 0.2.0, so
+it gets a line under Fixed in `CHANGELOG.md`; (2) on Windows with Python 3.13
+or later the plugin bootstrap stopped treating `CLAUDE_CFG_HOME=/srv/x` as
+absolute and fell back to `~/.claude-cfg` while the wrapper still read
+`/srv/x`, so the user would have seen "still setting up"
+(`scripts/config_history_state.py`, now `posixpath.isabs`; the plugin is
+unreleased, so no changelog line). Test assumptions fixed (`985bf02`,
+`cf29135`): Typer forces coloured help when `GITHUB_ACTIONS` is set, so four
+help tests failed everywhere, fixed once by an autouse fixture in
+`tests/conftest.py`; one test asserted the runner's full host name where the
+tool caps machine names at 40 characters on purpose; the Windows ones were
+hard-coded `/` in expected paths, an unescaped Windows path used as a regex, a
+fake environment with `bin/python` where the bootstrap correctly uses
+`Scripts\python.exe`, and a backslash path pasted into a JSON string; and
+Typer 0.29 prints `[message]` where 0.23 prints `[MESSAGE]`, which appeared
+only after the first push. Six tests are now skipped on Windows with a stated
+reason (four need `/bin/sh` or the executable bit, two check mode 0o600). CI
+config (`cc1b039`): macOS 3.9 runs on `macos-15-intel`; the label was checked
+against the `actions/runner-images` README and GitHub's hosted-runner page,
+not taken from memory. Proof: run 45678849145 on head `cf29135`, 15 of 15 jobs
+pass: Linux `625 passed, 2 skipped`, macOS `627 passed`, Windows
+`593 passed, 22 skipped`; locally `627 passed in 20.92s` on Python 3.12 and
+`627 passed in 10.90s` on 3.9.6 (624 plus 3 new tests); the pull request
+reads MERGEABLE, CLEAN. Honest limits: Windows still never runs the launcher
+or the wrapper, since 16 of its 22 skips are `tests/test_plugin_shell.py`
+(`docs/tickets/plugin-launcher-untested-on-windows-and-linux.md`, updated; the
+Linux half of that ticket is now covered by CI); the two code fixes were read
+by the planner and not independently reviewed; the four fix commits carry no
+log entry of their own because Windows could only be checked by pushing, so
+this commit carries the record. New tickets:
+`docs/tickets/ci-tests-newest-typer-while-the-plugin-installs-a-pinned-one.md`,
+`docs/tickets/drive-less-tool-home-on-windows-accepted-by-the-plugin-and-refused-by-the-tool.md`.
+Decision row 20. Release line unchanged: carriers at 0.3.0, latest tag
+`v0.2.0`. Files: commits `2309a20`, `985bf02`, `cc1b039`, `cf29135` touch
+`.github/workflows/ci.yml`, `claude_cfg/tracked_files.py`,
+`scripts/config_history_state.py`, `tests/conftest.py`,
+`tests/mcp_fixtures.py`, `tests/plugin_fakes.py` and
+`tests/test_backup_undo.py`, `test_claude_config_dir.py`, `test_core.py`,
+`test_mcp_capture_plan.py`, `test_path_matching.py`,
+`test_plugin_bootstrap.py`, `test_plugin_shell.py`, `test_restore_plan.py`,
+`test_session_hook.py`, `test_status_hook.py`; this commit adds
+`CHANGELOG.md`, `docs/PROGRESS.md`, `docs/DECISIONS.md`, the two new tickets
+and the updated launcher ticket.
+
 **2026-11-25: Pull request #8 opened against `main`; CI workflow fixed so the Linux 3.9 job can start (CI config only, no code). 🟡 PARTIAL**
 Trigger: the owner asked for the pull request so CI would run on the 0.3.0
 work for the first time. The first run (45671228537) failed before any test

@@ -2,6 +2,22 @@
 
 Status: OPEN · Priority: MEDIUM · Type: verification gap · Cost: none
 
+> Update 2026-11-25, first CI run on Linux and Windows (pull request #8, run
+> 45678849145, all 15 jobs green). Linux is no longer unrun: the suite passed
+> on `ubuntu-latest` 3.10 to 3.13 and `ubuntu-24.04` 3.9 with
+> `625 passed, 2 skipped`, both skips in `tests/test_plugin_shell.py`, the
+> rest of that file's launcher and wrapper tests running through the
+> runner's `sh`. Which two tests skip there and why was not looked at.
+> Windows is unchanged in substance: `593 passed, 22 skipped`, and 16 of the
+> 22 skips are `tests/test_plugin_shell.py`, so the launcher and the wrapper
+> still never run on Windows, not through Git Bash and not in a real install.
+> Six of those skips were added in this pass with a stated reason (no
+> `/bin/sh` and no shell-script fake Python; no POSIX executable bit; no POSIX
+> permission bits for the two owner-only pointer file tests in
+> `tests/test_plugin_bootstrap.py`). The Python side of the bootstrap now runs
+> on Windows in CI and uses `Scripts\python.exe`. A real install on either
+> system has still not been tried.
+
 > Related: `plugin-not-tried-in-an-interactive-session.md` covers the
 > interactive terminal on macOS. This one covers other operating systems.
 
