@@ -3,7 +3,7 @@
 import typer
 
 from claude_cfg.cli.output import console
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import terminal_command_text
 
 INIT_QUESTION = "\nSync user-level MCP servers? Their definitions often contain API tokens."
 
@@ -31,5 +31,5 @@ def print_mcp_sync_state(enabled: bool) -> None:
         )
     else:
         console.print(
-            f"MCP server sync is off. Turn it on with `{command_hint('config mcp --enable')}`."
+            f"MCP server sync is off. Turn it on with {terminal_command_text('config mcp --enable')}."
         )

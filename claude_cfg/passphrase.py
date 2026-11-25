@@ -8,7 +8,7 @@ from typing import Callable, Mapping, Optional
 from claude_cfg.config import encryption_settings, is_encryption_enabled
 from claude_cfg.errors import PassphraseMismatchError, PassphraseUnavailableError
 from claude_cfg.passphrase_verifier import VERIFIER_KEY, verifier_matches
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import terminal_command_text, uses_slash_commands
 
 PASSPHRASE_ENV_VAR = "CLAUDE_CFG_PASSPHRASE"
 
@@ -16,8 +16,21 @@ PASSPHRASE_ENV_VAR = "CLAUDE_CFG_PASSPHRASE"
 def mismatch_message() -> str:
     return (
         "This passphrase does not match the one set up on this machine. Nothing was pushed. "
-        f"If the passphrase changed, run `{command_hint('config encrypt')}` to set it again."
+        f"If the passphrase changed, run {terminal_command_text('config encrypt')} to set it again."
     )
+
+
+def unavailable_message() -> str:
+    """No passphrase and no one to type it. Inside the plugin the command
+    itself cannot run in a terminal, so that way is left out."""
+    message = (
+        "This snapshot is encrypted and no passphrase is available. "
+        f"Set the {PASSPHRASE_ENV_VAR} environment variable, save one with "
+        f"{terminal_command_text('config encrypt')}"
+    )
+    if uses_slash_commands():
+        return message + "."
+    return message + ", or run the command in a terminal."
 
 
 REPEAT_MISMATCH_MESSAGE = "The two passphrases you typed do not match. Nothing was pushed."
@@ -97,11 +110,7 @@ class PassphraseResolver:
             entered = self._prompt()
             if entered:
                 return entered, True
-        raise PassphraseUnavailableError(
-            "This snapshot is encrypted and no passphrase is available. "
-            f"Set the {PASSPHRASE_ENV_VAR} environment variable, save one with "
-            f"`{command_hint('config encrypt')}`, or run the command in a terminal."
-        )
+        raise PassphraseUnavailableError(unavailable_message())
 
     def _check(self, passphrase: str, prompted: bool) -> None:
         verifier = encryption_settings(self._cfg).get(VERIFIER_KEY)

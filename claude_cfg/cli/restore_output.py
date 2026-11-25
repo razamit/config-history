@@ -4,28 +4,35 @@ from typing import Optional
 
 from rich.markup import escape
 
+from claude_cfg.change_summary import change_text
 from claude_cfg.cli.file_list_output import print_file_group
 from claude_cfg.cli.mcp_output import print_mcp_plan, print_mcp_pull_result, print_mcp_undo_result
 from claude_cfg.cli.output import console, format_timestamp, print_restore_result, shown
 from claude_cfg.command_wording import CommandWording, wording_for
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import terminal_command_hint
 from claude_cfg.pull_manager import PreparedPull
 from claude_cfg.undo_manager import UndoResult
 
 
 def only_local_note(wording: CommandWording) -> str:
-    verb = wording.restore_verb
-    return f"a normal {verb} keeps these; `{wording.exact_restore_hint()}` would remove them"
+    return f"a normal {wording.restore_verb} keeps these; {wording.extras_removal_text()}"
 
 
 def print_snapshot_heading(prepared: PreparedPull, wording: Optional[CommandWording] = None) -> None:
+    """``Version 3, saved 2 hours ago (today 18:11): message``, then the
+    ``--only`` paths when the restore is partial."""
     wording = wording or wording_for(None)
     entry = prepared.entry
     message = prepared.contents.manifest.get("message", entry.message)
+    if wording.local_words:
+        message = change_text(message, entry.automatic)
+    message = shown(message)
     console.print(
-        f"{wording.version_label(entry.snapshot_id, markup=True)} "
-        f"({format_timestamp(entry.timestamp)}) {shown(message)}"
+        f"{wording.version_label(entry.snapshot_id, markup=True)}, {wording.saved_word} "
+        f"{format_timestamp(entry.timestamp)}" + (f": {message}" if message else "")
     )
+    if prepared.plan.only_paths:
+        console.print(f"Only: {shown(', '.join(prepared.plan.only_paths))}")
 
 
 def print_plan(
@@ -53,7 +60,7 @@ def print_plan(
     elif plan.only_local and not plan.exact:
         console.print(
             f"[dim]Kept: {len(plan.only_local)} file(s) only on this machine "
-            f"(`{escape(wording.exact_restore_hint())}` would remove them)[/dim]"
+            f"({escape(wording.extras_removal_text())})[/dim]"
         )
     print_left_untouched(plan.left_untouched)
     if plan.conflicts:
@@ -74,8 +81,8 @@ def print_pull_result(result: dict, wording: Optional[CommandWording] = None) ->
     if result.get("session_hook_removed"):
         console.print(
             "  [yellow]This snapshot's settings.json removed the claude-cfg session hook. "
-            f"Run `{escape(command_hint('integrate install'))}`, then "
-            f"`{escape(command_hint('push'))}`, to keep it.[/yellow]"
+            f"Run `{escape(terminal_command_hint('integrate install'))}`, then "
+            f"`{escape(terminal_command_hint('push'))}`, to keep it.[/yellow]"
         )
 
 
@@ -89,6 +96,8 @@ def print_pull_preview(
 def print_undo_result(result: UndoResult, wording: Optional[CommandWording] = None) -> None:
     wording = wording or wording_for(None)
     undone = f"the {wording.restore_verb} of {wording.version_noun(result.snapshot_id)}"
+    if result.restored_at:
+        undone += f" from {format_timestamp(result.restored_at)}"
     if result.files_already_undone:
         console.print(
             f"[green]Finished undoing {undone}: "
@@ -102,7 +111,7 @@ def print_undo_result(result: UndoResult, wording: Optional[CommandWording] = No
     if result.mcp_left_pending:
         console.print(
             "  [yellow]MCP server changes were not put back (--files-only). Run "
-            f"`{escape(command_hint('undo'))}` from a normal terminal to put them back.[/yellow]"
+            f"`{escape(terminal_command_hint('undo'))}` from a normal terminal to put them back.[/yellow]"
         )
     if result.overridden_changes:
         console.print(
@@ -110,7 +119,7 @@ def print_undo_result(result: UndoResult, wording: Optional[CommandWording] = No
             "changed after the pull (--force).[/yellow]"
         )
     print_mcp_undo_result(result.mcp_result)
-    if not result.state_restored and not result.files_already_undone:
+    if not result.state_restored and not result.files_already_undone and not result.partial:
         console.print(
             "  [dim]The sync state was left as it is, because a later push or pull "
             "already moved it past this snapshot.[/dim]"

@@ -18,7 +18,7 @@ from claude_cfg.errors import (
     SnapshotIntegrityError,
     SnapshotRaceError,
 )
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import shell_command_hint
 from claude_cfg.providers.base import StorageProvider
 from claude_cfg.snapshot import read_manifest
 from claude_cfg.snapshot_index import SnapshotEntry, SnapshotIndexManager
@@ -204,7 +204,7 @@ class SnapshotStore:
             f"Another machine pushed snapshot #{entry.snapshot_id} at the same moment, and "
             f"this push could not remove its own copy ({type(failure).__name__}). Snapshot "
             f"#{entry.snapshot_id} is now duplicated; the leftover object is {entry.key}. "
-            f"Use `{command_hint('pull --key <key>')}` to select one, and delete {entry.key} "
+            f"Use `{shell_command_hint('pull --key <key>')}` to select one, and delete {entry.key} "
             "from the backend when it can be reached."
         ) from failure
 

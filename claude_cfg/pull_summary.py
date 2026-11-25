@@ -31,6 +31,7 @@ def describe_pull(
         "timestamp": entry.timestamp,
         "key": entry.key,
         "message": manifest.get("message", entry.message),
+        "automatic": entry.automatic,
         "encrypted": prepared.encrypted,
         "files_restored": len(applied.written),
         "created": len(plan.to_create),
@@ -49,6 +50,7 @@ def describe_pull(
         "from_other_machine": is_from_other_machine(manifest, machine),
         "mcp": describe_mcp(outcome),
         "session_hook_removed": session_hook_removed,
+        "only_paths": list(plan.only_paths),
     }
 
 

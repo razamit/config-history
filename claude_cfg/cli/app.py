@@ -25,6 +25,7 @@ app = typer.Typer(
 )
 
 SAVE_HELP = "Save your current Claude Code settings as a new version. Same as push."
+HISTORY_HELP = "List the saved versions, newest first. Same as list."
 RESTORE_HELP = (
     "Put your Claude Code settings back to a saved version (the latest by default). "
     "Same as pull."
@@ -57,6 +58,7 @@ app.command("save", help=SAVE_HELP)(push_command)
 app.command("pull")(pull_command)
 app.command("restore", help=RESTORE_HELP)(pull_command)
 app.command("list")(list_command)
+app.command("history", help=HISTORY_HELP)(list_command)
 app.command("diff")(diff_command)
 app.command("undo")(undo_command)
 app.command("status")(status_command)

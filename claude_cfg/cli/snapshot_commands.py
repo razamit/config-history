@@ -1,4 +1,6 @@
-"""The push and list commands."""
+"""The push and list (also history) commands."""
+
+from typing import Optional
 
 import typer
 from rich.markup import escape
@@ -10,14 +12,11 @@ from claude_cfg.cli.command_context import (
     passphrase_prompt_pausing,
     reported_errors,
 )
-from claude_cfg.cli.output import (
-    console,
-    print_push_result,
-    print_snapshot_table,
-)
+from claude_cfg.cli.history_output import print_history
+from claude_cfg.cli.output import console, print_push_result
 from claude_cfg.command_wording import wording_for
 from claude_cfg.paths import claude_dir
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import ask_claude_text, command_hint, uses_slash_commands
 from claude_cfg.providers import get_provider
 from claude_cfg.tracked_defaults import untracked_defaults_on_disk
 
@@ -43,22 +42,32 @@ def push_command(
 def _print_untracked_defaults_hint(cfg: dict) -> None:
     """One dim line when default entries exist on disk but are not tracked."""
     untracked = untracked_defaults_on_disk(cfg.get("tracked", []), claude_dir())
-    if untracked:
-        console.print(
-            f"[dim]Not tracked yet: {escape(', '.join(untracked))}. Run "
-            f"`{escape(command_hint('config track-defaults'))}` to add them.[/dim]"
-        )
+    if not untracked:
+        return
+    if uses_slash_commands():
+        how = ask_claude_text("config track-defaults", "track them too")
+    else:
+        how = f"Run `{command_hint('config track-defaults')}` to add them."
+    console.print(f"[dim]Not tracked yet: {escape(', '.join(untracked))}. {escape(how)}[/dim]")
 
 
 def list_command(
     keys: bool = typer.Option(False, "--keys", help="Also show each snapshot's object key."),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        help="Show at most this many, newest first (default: 10 for the local history, "
+        "all for a sync backend).",
+    ),
 ) -> None:
-    """List all snapshots."""
+    """List the saved versions, newest first."""
     cfg = load_config_or_exit()
     provider = get_provider(cfg)
     with reported_errors():
         snapshots = core.list_snapshots(provider)
+    wording = wording_for(cfg)
     if not snapshots:
-        console.print("No snapshots found.")
+        console.print("No versions saved yet." if wording.local_words else "No snapshots found.")
         return
-    print_snapshot_table(snapshots, show_keys=keys)
+    print_history(snapshots, wording, limit=limit, show_keys=keys)

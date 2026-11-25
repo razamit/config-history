@@ -21,9 +21,34 @@ from claude_cfg.errors import (
     UndoTargetMismatchError,
 )
 from claude_cfg.mcp_server_sync import McpApplyResult, McpServerSyncManager
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import (
+    ask_claude_phrase,
+    ask_claude_text,
+    command_hint,
+    terminal_command_hint,
+    uses_slash_commands,
+)
 from claude_cfg.restore_writer import SafeDeleter, write_inside
 from claude_cfg.sync_state import SyncStateStore
+
+
+def force_undo_text() -> str:
+    """How to undo anyway when files changed after the pull."""
+    if uses_slash_commands():
+        return ask_claude_text("undo --force", "undo it anyway and replace those edits")
+    return f"Run `{command_hint('undo --force')}` to revert them anyway."
+
+
+def files_only_undo_text() -> str:
+    """The two ways on when MCP servers cannot be put back here."""
+    terminal = f"Run `{terminal_command_hint('undo')}` from a normal terminal"
+    if uses_slash_commands():
+        request = "put the files back now and the MCP servers later"
+        return f"{terminal}, or {ask_claude_phrase('undo --files-only', request)}."
+    return (
+        f"{terminal}, or `{command_hint('undo --files-only')}` to put the files back now "
+        "and the MCP servers later."
+    )
 
 
 @dataclass
@@ -38,6 +63,9 @@ class UndoResult:
     state_restored: bool = False
     mcp_left_pending: bool = False
     files_already_undone: bool = False
+    # A partial pull (--only) never changed the sync state, so undo leaves it.
+    partial: bool = False
+    restored_at: Optional[str] = None
 
 
 class UndoManager:
@@ -75,10 +103,10 @@ class UndoManager:
         if changed and not force:
             raise UndoConflictError(
                 "These files changed after the pull, so undo stopped to keep your "
-                f"edits. Run `{command_hint('undo --force')}` to revert them anyway.",
+                f"edits. {force_undo_text()}",
                 changed,
             )
-        result = UndoResult(record.path, manifest.snapshot_id, manifest.snapshot_key)
+        result = self._new_result(record, manifest)
         result.overridden_changes = changed
         self._put_back_saved_files(record, manifest, result)
         self._remove_created_files(manifest, result)
@@ -96,15 +124,25 @@ class UndoManager:
         if files_only:
             raise NothingToUndoError(
                 "The files of the last pull were already put back; only its MCP server "
-                f"changes are left. Run `{command_hint('undo')}` without --files-only from a "
+                f"changes are left. Run `{terminal_command_hint('undo')}` without --files-only from a "
                 "normal terminal to put them back."
             )
         self._require_mcp_ready()
-        result = UndoResult(record.path, manifest.snapshot_id, manifest.snapshot_key)
+        result = self._new_result(record, manifest)
         result.files_already_undone = True
         self._revert_mcp_servers(manifest, result)
         self._backups.mark_mcp_reverted(record)
         return result
+
+    @staticmethod
+    def _new_result(record: BackupRecord, manifest: BackupManifest) -> UndoResult:
+        return UndoResult(
+            record.path,
+            manifest.snapshot_id,
+            manifest.snapshot_key,
+            partial=manifest.partial,
+            restored_at=manifest.created_at,
+        )
 
     def _require_mcp_ready(self) -> None:
         problem = (
@@ -115,9 +153,7 @@ class UndoManager:
         if problem is not None:
             raise McpUndoBlockedError(
                 "This pull also changed MCP servers, and they cannot be put back here: "
-                f"{problem}. Nothing was changed. Run `{command_hint('undo')}` from a normal "
-                f"terminal, or `{command_hint('undo --files-only')}` to put the files back now "
-                "and the MCP servers later."
+                f"{problem}. Nothing was changed. {files_only_undo_text()}"
             )
 
     def _require_same_target(self, manifest: BackupManifest) -> None:
@@ -134,7 +170,10 @@ class UndoManager:
     def _restore_state_if_current(self, manifest: BackupManifest) -> bool:
         """Put the earlier sync state back only while the state still points
         at the snapshot this pull restored. A later push or pull moved it on,
-        and rewinding past that would hide it."""
+        and rewinding past that would hide it. A partial pull never changed
+        the state, so there is nothing to put back."""
+        if manifest.partial:
+            return False
         current = self._state_store.load()
         if current is None or current.snapshot_key != manifest.snapshot_key:
             return False

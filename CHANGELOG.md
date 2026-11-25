@@ -11,7 +11,7 @@ This section will be released as 0.3.0.
 
 ### Added
 - The `config-history` Claude Code plugin (version 0.3.0). Install it with
-  `claude plugin marketplace add razamit/claude-cfg` and
+  `claude plugin marketplace add razamit/config-history` and
   `claude plugin install config-history@razamit`. It needs no setup: on the
   first session it builds a private Python environment in the plugin's data
   folder, in the background, using the Python already on the machine
@@ -22,15 +22,36 @@ This section will be released as 0.3.0.
   automatic versions (`config autosave --keep` changes that). Versions saved by
   hand are never deleted. Session start shows one line, for example
   "config-history: saved version 2 (2 files changed: settings.json,
-  skills/demo/SKILL.md). Go back with: config-history restore --point 1". The
+  skills/demo/SKILL.md). To go back, type /config-history:restore". The
   line uses `systemMessage`, so it does not enter Claude's context.
 - Zero-setup local history. With no config, the first command writes one that
   stores versions in `~/.claude-cfg/history` (owner-only, not encrypted), with
   the default tracked list, no MCP sync and auto-save on. `init` is optional.
   `init` replaces that config, picks a backend and leaves auto-save off.
-- Plugin skills `/config-history:history`, `:diff`, `:restore`, `:undo`,
-  `:save` and `:status`, and a `config-history` command on the `PATH` of
-  Claude's shell while the plugin is enabled. The skills run only when typed.
+- Three plugin skills, and a `config-history` command on the `PATH` of
+  Claude's shell while the plugin is enabled. `/config-history:restore`, typed
+  with no arguments, is the one command to remember: it lists recent versions
+  in plain words, takes a number or a description such as "yesterday", shows
+  what would change, offers to restore only some files, and says to restart
+  Claude Code and that `/config-history:undo` reverts it. Before a real restore
+  it always shows the chosen version and the files that will change, and
+  waits for a clear yes in the conversation; Claude Code's permission prompt
+  is a second check, not the confirmation. `/config-history:undo`
+  reverts the last restore. Both run only when typed. `/config-history:history`
+  answers plain questions such as "what changed in my settings?" and can save a
+  labelled version; it is the one skill Claude may start by itself, and it
+  never restores.
+- `claude-cfg pull --only PATH` (and `restore --only`), repeatable, restores
+  only a file or a folder of a snapshot. The plan, dry run, backup and `undo`
+  cover only those files. It refuses `--exact`, unsafe paths, a value that
+  starts with `-` (so `--only --dry-run` cannot turn a dry run into a real
+  restore; write `./-name` for such a file) and a path that matches nothing
+  (naming the closest matches), never restores MCP servers,
+  and leaves the sync state alone, so the next save records the mixed state
+  as a new version.
+- `claude-cfg history` as an alias of `list`, and `list --limit N`. In local
+  wording the list has three columns, Version, When and What changed, shows 10
+  versions by default and says how many older ones exist.
 - `claude-cfg autosave`, `claude-cfg config autosave [--enable|--disable]
   [--keep N]` and `claude-cfg session-hook start|end`.
 - `save` and `restore` as aliases of `push` and `pull`.
@@ -105,10 +126,36 @@ This section will be released as 0.3.0.
   `scripts/plugin-constraints.txt`, maintained with each release, and
   `plugin.json` declares the package index hosts under `network.hosts`.
   `typer[all]` became `typer`, since the `all` extra no longer exists.
-- `/config-history:restore` pre-approves only `list` and the dry run, and
+- `/config-history:restore` pre-approves only `history`, `diff` and the dry
+  run with `--dry-run` first (`restore --dry-run --point *`), and
   `/config-history:undo` pre-approves nothing, so a real restore or undo goes
-  through Claude Code's permission prompt. `/config-history:save` passes the
-  message after `--`, so a message starting with `-` works.
+  through Claude Code's permission prompt. `/config-history:history`
+  pre-approves only its five commands exactly as written, with no wildcard,
+  so `--limit`, `--point` or a save label asks for permission first. Its
+  description is scoped to Claude Code's own config in `~/.claude`. It
+  passes a save label after `--`, so a label starting with `-` works.
+- Under the `config-history` name, a hint names a slash command the user can
+  type (`/config-history:restore`, `/config-history:undo`,
+  `/config-history:history`) when one does the job, instead of a shell command
+  that only Claude's shell has. A command no slash command covers is worded as
+  something to ask Claude, such as "Ask Claude to turn it on (it runs
+  `config-history config autosave --enable`)". A command that asks a question
+  at a terminal (`config encrypt`, a save that prompts for the passphrase,
+  `config mcp --enable`) names `claude-cfg ...` "in a terminal", since Claude's
+  shell cannot answer the prompt. `status` suggests asking Claude to save a
+  version. Under `claude-cfg` the hints are unchanged.
+- The "not encrypted" notice after a save no longer shows for the automatic
+  local history, which stays on this machine. It still shows for a backend set
+  up with `init`.
+- A partial restore that changed nothing no longer says that the next save
+  records the mix as a new version.
+- Times are shown in the machine's time zone with a relative phrase, such as
+  "2 hours ago (today 18:11)", "yesterday 09:30" or "3 days ago (Sun 22 Nov
+  14:05)", in `list`, `status`, `diff`, restore and undo output. They are
+  still stored in UTC. A time whose local value falls outside the calendar
+  (year 1 or 9999) is shown in UTC instead of failing the command.
+- The GitHub repository was renamed from `claude-cfg` to `razamit/config-history`.
+  The PyPI package and the command keep the name `claude-cfg`.
 - With the local history or under the `config-history` name, messages say
   `save` and `restore` and "version N" instead of `push`, `pull` and
   "snapshot #N", and `status` says "Last saved: version N" without a remote
@@ -249,6 +296,6 @@ This section will be released as 0.3.0.
 - `extract_zip` rejects archive entries that escape the destination directory (zip slip).
 - `_expand_referenced_files` rejects `~/.claude/<path>` references that resolve outside `~/.claude/`.
 
-[Unreleased]: https://github.com/razamit/claude-cfg/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/razamit/claude-cfg/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/razamit/claude-cfg/releases/tag/v0.1.0
+[Unreleased]: https://github.com/razamit/config-history/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/razamit/config-history/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/razamit/config-history/releases/tag/v0.1.0

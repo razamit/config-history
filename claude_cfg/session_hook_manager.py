@@ -92,7 +92,9 @@ class SessionHookManager:
     def _autosave_or_held_line(self, cfg: dict, remote_newer: bool) -> Optional[str]:
         limit = self._limits.start_autosave_seconds
         if not remote_newer:
-            return autosave_line(self._timed(lambda: self._actions.run_autosave(cfg), limit))
+            return autosave_line(
+                self._timed(lambda: self._actions.run_autosave(cfg), limit), wording_for(cfg)
+            )
         report = self._timed(lambda: self._actions.detect_changes(cfg), limit)
         if report is None or not report.needs_save:
             return None

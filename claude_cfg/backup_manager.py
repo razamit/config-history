@@ -55,6 +55,12 @@ class BackupManifest:
     mcp_servers: Optional[dict] = None
     target_dir: Optional[str] = None
     mcp_reverted_at: Optional[str] = None
+    # The --only paths of a partial pull, which never changed the sync state.
+    only_paths: Optional[list] = None
+
+    @property
+    def partial(self) -> bool:
+        return bool(self.only_paths)
 
     @property
     def mcp_record(self) -> Optional[McpBackupRecord]:
@@ -151,6 +157,7 @@ class BackupManager:
             previous_state=previous_state,
             mcp_servers=mcp_record.to_dict() if mcp_changes else None,
             target_dir=str(plan.target_dir.resolve()),
+            only_paths=list(plan.only_paths) or None,
         )
         self.save_manifest(BackupRecord(folder, manifest))
         return BackupRecord(folder, manifest)

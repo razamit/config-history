@@ -7,8 +7,15 @@ from claude_cfg.errors import (
     NoSnapshotsError,
     SnapshotNotFoundError,
 )
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import command_hint, uses_slash_commands
 from claude_cfg.snapshot_index import SnapshotEntry
+
+
+def no_snapshots_message() -> str:
+    """Nothing saved yet. Inside the plugin, saving is something to ask Claude for."""
+    if uses_slash_commands():
+        return "No versions saved yet. Ask Claude to save a version first."
+    return f"No snapshots found. Run `{command_hint('push')}` first."
 
 
 def select_entry(
@@ -24,7 +31,7 @@ def select_entry(
     an exact key instead.
     """
     if not entries:
-        raise NoSnapshotsError(f"No snapshots found. Run `{command_hint('push')}` first.")
+        raise NoSnapshotsError(no_snapshots_message())
     if key is not None:
         return _select_by_key(entries, key)
     wanted_id = max(e.snapshot_id for e in entries) if snapshot_id is None else snapshot_id

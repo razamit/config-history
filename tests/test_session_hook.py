@@ -165,15 +165,22 @@ def test_end_with_no_config_prints_nothing(isolated_home):
 
 
 def test_program_name_in_notice_and_cli_hint(default_setup, monkeypatch):
+    """Inside the plugin the notice names the slash command a person can type;
+    a command no slash command covers is something to ask Claude, and the
+    automatic local history has no encryption notice."""
     monkeypatch.setenv(PROGRAM_NAME_ENV, "config-history")
     _start()
     write_files(claude_dir(), {"CLAUDE.md": "# two"})
-    assert _message(_start()).endswith("Go back with: config-history restore --point 1")
-    assert "config-history config autosave --enable" in runner.invoke(
-        app, ["config", "autosave", "--disable"]
-    ).output
+    assert _message(_start()) == (
+        "config-history: saved version 2 (1 file changed: CLAUDE.md). "
+        "To go back, type /config-history:restore"
+    )
+    assert runner.invoke(app, ["config", "autosave", "--disable"]).output.strip() == (
+        "Auto-save is off. Ask Claude to turn it on "
+        "(it runs `config-history config autosave --enable`)."
+    )
     pushed = runner.invoke(app, ["save", "by hand"])
-    assert "config-history config encrypt" in pushed.output
+    assert pushed.exit_code == 0 and "not encrypted" not in pushed.output
 
 
 def test_unsafe_program_name_falls_back(default_setup, monkeypatch):

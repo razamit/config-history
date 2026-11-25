@@ -1,7 +1,7 @@
 """The pull, diff and undo commands."""
 
 import sys
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -24,6 +24,7 @@ from claude_cfg.cli.restore_output import (
 from claude_cfg.errors import ConfirmationRequiredError, UndoConflictError
 from claude_cfg.providers import get_provider
 from claude_cfg.pull_manager import PreparedPull
+from claude_cfg.restore_selection import RestoreSelection
 from claude_cfg.restore_writer import RestoreWriter
 
 POINT_OPTION = typer.Option(None, "--point", help="Snapshot ID (default: the latest).")
@@ -36,6 +37,12 @@ ALLOW_PLAIN_OPTION = typer.Option(
     "--allow-plain",
     help="Accept a snapshot that is not encrypted although encryption is on here "
     "(for snapshots pushed before encryption was turned on).",
+)
+ONLY_OPTION = typer.Option(
+    None,
+    "--only",
+    help="Restore only this file or folder of the snapshot, such as settings.json or "
+    "skills/demo/. Repeat it for more. Cannot be used with --exact.",
 )
 
 
@@ -54,13 +61,19 @@ def _reject_point_and_key(point: Optional[int], key: Optional[str]) -> None:
 
 
 def _prepare(
-    cfg: dict, point: Optional[int], key: Optional[str], exact: bool, allow_plain: bool
+    cfg: dict,
+    point: Optional[int],
+    key: Optional[str],
+    exact: bool,
+    allow_plain: bool,
+    selection: Optional[RestoreSelection] = None,
 ) -> PreparedPull:
     provider = get_provider(cfg)
     with console.status("Fetching snapshot...") as status:
         return core.prepare_pull(
             point, cfg, provider, key=key, exact=exact,
             passphrase_prompt=passphrase_prompt_pausing(status), allow_plain=allow_plain,
+            selection=selection,
         )
 
 
@@ -97,12 +110,15 @@ def pull_command(
     yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask before --exact deletes files."),
     show_all: bool = ALL_OPTION,
     allow_plain: bool = ALLOW_PLAIN_OPTION,
+    only: Optional[List[str]] = ONLY_OPTION,
 ) -> None:
     """Pull a snapshot and restore it to ~/.claude/."""
     _reject_point_and_key(point, key)
+    with reported_errors():
+        selection = RestoreSelection.from_values(only, exact)
     cfg = load_config_or_exit()
     with reported_errors():
-        prepared = _prepare(cfg, point, key, exact, allow_plain)
+        prepared = _prepare(cfg, point, key, exact, allow_plain, selection)
         if dry_run:
             print_pull_preview(prepared, show_all, wording_for(cfg))
             return

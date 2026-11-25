@@ -42,6 +42,7 @@ from claude_cfg.providers.base import StorageProvider
 from claude_cfg.pull_manager import PreparedPull, PullManager
 from claude_cfg.pull_summary import describe_pull
 from claude_cfg.restore_plan import RestorePlanner
+from claude_cfg.restore_selection import RestoreSelection
 from claude_cfg.snapshot_index import SnapshotEntry
 from claude_cfg.snapshot_store import SnapshotStore
 from claude_cfg.sync_state import SyncStateStore, sync_state_for
@@ -154,8 +155,11 @@ def prepare_pull(
     exact: bool = False,
     passphrase_prompt: Optional[Callable[[], str]] = None,
     allow_plain: bool = False,
+    selection: Optional[RestoreSelection] = None,
 ) -> PreparedPull:
     """Fetch a snapshot and plan its restore. Writes nothing anywhere.
+
+    ``selection`` (``--only``) plans just the files it covers.
 
     When an encrypted snapshot opened and the config has no passphrase
     verifier, the prepared pull carries one for :func:`apply_pull` to store.
@@ -175,6 +179,7 @@ def prepare_pull(
         key=key,
         exact=exact,
         mcp_planner=mcp_plan_builder(cfg, claude_json_file(), transform),
+        selection=selection,
     )
     if prepared.encrypted and passphrase.value and not encryption_settings(cfg).get(VERIFIER_KEY):
         prepared = replace(prepared, new_passphrase_verifier=create_verifier(passphrase.value))
@@ -208,10 +213,11 @@ def pull(
     exact: bool = False,
     command_runner: Optional[CommandRunner] = None,
     allow_plain: bool = False,
+    selection: Optional[RestoreSelection] = None,
 ) -> dict:
     prepared = prepare_pull(
         snapshot_id, cfg, provider, key=key, exact=exact,
-        passphrase_prompt=passphrase_prompt, allow_plain=allow_plain,
+        passphrase_prompt=passphrase_prompt, allow_plain=allow_plain, selection=selection,
     )
     return apply_pull(prepared, cfg, command_runner)
 

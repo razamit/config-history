@@ -4,7 +4,7 @@ Thanks for your interest in contributing. This is a small project, so the workfl
 
 ## Reporting bugs
 
-Open an [issue](https://github.com/razamit/claude-cfg/issues/new/choose) using the **Bug report** template. Please include:
+Open an [issue](https://github.com/razamit/config-history/issues/new/choose) using the **Bug report** template. Please include:
 
 - Your OS and Python version
 - The `claude-cfg` version (`claude-cfg --version` or check `pyproject.toml`)

@@ -6,6 +6,89 @@ files touched, cross-refs to decisions and tickets. Never rewrite old entries.
 
 ---
 
+**2026-11-25: Easy flow for the `config-history` plugin: one guided restore command, three skills, plain history, local times, single-file restore (offline, code + tests + docs, no spend). 🟡 PARTIAL [unreleased]**
+Trigger: the owner's bar for a newly installed plugin, "it should be super easy
+or it won't work", and the choice "Essentials + extras" from the options laid
+out. Done: `/config-history:restore` with no arguments is the one command to
+remember (lists versions, takes a number or words such as "yesterday",
+previews, offers only some files, confirms in the conversation, restores, says
+to restart and how to undo); three skills replace six (`restore`, `undo`,
+`history`; `save`, `diff` and `status` are deleted), and `history` is the one
+skill Claude may start by itself. The CLI gained `restore --only <path>`, a
+`history` alias with `--limit` and a three-column list (Version, When, What
+changed), times in the local zone with a relative phrase, and messages that
+under the plugin name tell the user something they can do. Repo URLs outside
+`docs/` now read `razamit/config-history`. An independent review (Fable 5.2)
+of the build raised 9 findings, 3 of them important: wildcard pre-approvals in
+the model-invocable skill, `--only` swallowing `--dry-run` so a pre-approved
+dry run became a real restore (reproduced), and the permission prompt as the
+only confirmation. A fix pass (implementer, Opus 5.5) answered findings A to H
+plus two from the planner's run, each with a regression test; the new tests
+for a created file in a partial undo and for `skills/demo` against
+`skills/demo-old/` passed without a code change. Finding I (the remote) is the
+owner's and is ticketed. Proof: `624 passed in 20.05s` on Python 3.12 and
+`624 passed in 10.99s` on Python 3.9.6, up from `523 passed` at the last entry
+(`590` after the build, before the fix pass); `claude plugin validate .` prints
+"Validation passed with warnings" (`ICON_MISSING` only); no em dash outside
+`docs/`; `git grep -n "razamit/claude-cfg" -- . ':!docs'` prints nothing. A
+throwaway-home run under the plugin name after the fix pass: a save printed
+"Version 1 saved just now (today 19:34), 2 files, 0.8 KB" with no encryption
+notice; `history` printed the three-column table with a label as
+`"after model change" (saved by you)`;
+`restore --point 1 --only settings.json --only --dry-run` exited 1 with
+"--only needs a path after it, but got '--dry-run', which looks like an
+option. Nothing was restored." and the same file checksum before and after;
+`restore --dry-run --point 1 --only settings.json` printed the plan and
+"Dry run: nothing was written."; the real partial restore reported
+"0 created, 1 overwritten" and "Type `/config-history:undo` to revert this
+restore"; `undo` put the file back byte for byte. Five headless sessions the
+owner approved (Claude Code 2.1.332, Haiku, default permission mode, the real
+`~/.claude` login, tool data in a scratch folder deleted afterwards): a
+throwaway probe skill with the rule `Bash(echo probe *)` ran `echo probe plain`
+and was refused for `"$(...)"`, bare `$(...)`, backticks and `; other-command`,
+so substitution under a wildcard rule does not run unprompted
+(`docs/tickets/command-substitution-under-wildcard-allow-rules-not-tested-live.md`,
+filed and closed today); the plugin registered its three skills; asked "what
+changed in my settings?" with no command, Claude's first call was the
+`config-history:history` skill, which Claude Code then held for the user's
+approval (a skill Claude starts by itself asks once; `README.md` now says so);
+typed as `/config-history:history ...`, it ran `config-history history` and
+`config-history status` with no permission denial. Remains, and why this is
+partial: the guided restore flow and its confirmation in the conversation,
+`/config-history:undo`, the on-screen notice and the save at session end have
+not been seen in a real session and are skill text and tests on that text
+(`docs/tickets/plugin-not-tried-in-an-interactive-session.md`, updated twice);
+the fix pass was not independently reviewed
+(`docs/tickets/last-fix-passes-not-independently-reviewed.md`, updated); the
+repository is not renamed on GitHub yet, so the README's install command does
+not resolve and `CHANGELOG.md` says "was renamed" ahead of the fact
+(`docs/tickets/install-command-names-a-repo-that-does-not-exist-yet.md`); a
+few sync-backend messages still name a command the user cannot type
+(`docs/tickets/some-plugin-hints-still-name-commands-the-user-cannot-type.md`);
+no view of what changed inside a file
+(`docs/tickets/no-line-by-line-view-of-what-changed-inside-a-file.md`, open
+question 4). Changelog: the bullets for this work are already under
+`## [Unreleased]` in `CHANGELOG.md`, written with the code. Release line
+unchanged: carriers at 0.3.0, latest tag `v0.2.0`. Not committed at the time
+of writing. Files (53 paths): 26 under `claude_cfg/` (new: `change_summary.py`,
+`restore_selection.py`, `time_display.py`, `cli/history_output.py`; changed:
+`backup_manager.py`, `command_wording.py`, `core.py`, `errors.py`,
+`passphrase.py`, `program_name.py`, `pull_manager.py`, `pull_summary.py`,
+`restore_plan.py`, `session_hook_lines.py`, `session_hook_manager.py`,
+`snapshot_selection.py`, `snapshot_store.py`, `undo_manager.py`, and in `cli/`
+`app.py`, `autosave_commands.py`, `mcp_prompts.py`, `output.py`,
+`restore_commands.py`, `restore_output.py`, `snapshot_commands.py`,
+`status_output.py`); 7 under `tests/` (new: `test_command_hints.py`,
+`test_history_list.py`, `test_partial_restore.py`, `test_time_display.py`;
+changed: `test_local_wording.py`, `test_plugin_manifest.py`,
+`test_session_hook.py`); `skills/history/SKILL.md` and
+`skills/restore/SKILL.md` changed, `skills/save/SKILL.md`,
+`skills/diff/SKILL.md` and `skills/status/SKILL.md` deleted; `README.md`,
+`CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `pyproject.toml`,
+`.claude-plugin/plugin.json`, `.github/ISSUE_TEMPLATE/config.yml`; and under
+`docs/` this file, `DECISIONS.md`, four new tickets and two updated ones.
+Decision rows 15 to 18.
+
 **2026-11-25: Devlog system adopted (docs only, no code change). ✅ DONE.**
 Scaffolded `docs/PROGRESS.md`, `docs/DECISIONS.md`, `docs/tickets/` and
 `docs/RELEASES.md`, and created `CLAUDE.md` with the devlog block. The existing

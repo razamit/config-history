@@ -6,11 +6,16 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from claude_cfg.change_summary import change_text
 from claude_cfg.command_wording import CommandWording, wording_for
 from claude_cfg.display_text import printable_text
-from claude_cfg.program_name import command_hint
+from claude_cfg.program_name import command_hint, terminal_command_text
+from claude_cfg.time_display import LocalTimeFormatter
 
 console = Console()
+
+# Replaced in tests to fix the clock and the time zone.
+time_formatter = LocalTimeFormatter()
 
 _SUMMARY_LIMIT = 5
 
@@ -22,8 +27,9 @@ def shown(text: object) -> str:
 
 
 def format_timestamp(timestamp: str) -> str:
-    """``2026-05-06T14:32:00Z`` becomes ``2026-05-06 14:32:00``, ready for markup."""
-    return shown(str(timestamp).replace("T", " ").replace("Z", ""))
+    """A stored UTC timestamp as local, relative text such as
+    ``2 hours ago (today 18:11)``, ready for markup."""
+    return shown(time_formatter.describe(timestamp))
 
 
 def print_error(message: str) -> None:
@@ -35,11 +41,11 @@ def print_push_result(result: dict, wording: Optional[CommandWording] = None) ->
     size_kb = result["size_bytes"] / 1024
     console.print(
         f"[green]{wording.version_label(result['id'])} {wording.saved_word} "
-        f"({format_timestamp(result['timestamp'])}), "
+        f"{format_timestamp(result['timestamp'])}, "
         f"{result['file_count']} files, {size_kb:.1f} KB[/green]"
     )
-    if not result.get("encrypted"):
-        print_unencrypted_notice()
+    if not result.get("encrypted") and not wording.history_on_this_machine:
+        print_unencrypted_notice(wording)
     if result.get("index_updated") is False:
         console.print(
             "[dim]The snapshot is stored, but the index cache could not be "
@@ -47,10 +53,15 @@ def print_push_result(result: dict, wording: Optional[CommandWording] = None) ->
         )
 
 
-def print_unencrypted_notice() -> None:
+def print_unencrypted_notice(wording: Optional[CommandWording] = None) -> None:
+    """For a backend set up with ``init``. The automatic local history stays
+    on this machine, so the notice is left out there. ``config encrypt``
+    asks for a passphrase, so the plugin names the terminal command."""
+    wording = wording or wording_for(None)
+    noun, future = ("version", "saves") if wording.local_words else ("snapshot", "pushes")
     console.print(
-        f"[dim]This snapshot is not encrypted. Run `{escape(command_hint('config encrypt'))}` "
-        "to encrypt future pushes.[/dim]"
+        f"[dim]This {noun} is not encrypted. Run {escape(terminal_command_text('config encrypt'))} "
+        f"to encrypt future {future}.[/dim]"
     )
 
 
@@ -59,13 +70,13 @@ def print_restore_result(result: dict, wording: Optional[CommandWording] = None)
     on another machine, since credentials never travel with it."""
     wording = wording or wording_for(None)
     console.print(
-        f"[green]{wording.version_label(result['id'])} restored "
-        f"({format_timestamp(result['timestamp'])}): {result.get('created', 0)} created, "
+        f"[green]{wording.version_label(result['id'])} restored: {result.get('created', 0)} created, "
         f"{result.get('overwritten', 0)} overwritten, {result.get('deleted', 0)} deleted, "
         f"{result.get('unchanged', 0)} unchanged[/green]"
     )
-    if result.get("message"):
-        console.print(f"  Message: {shown(result['message'])}")
+    console.print(f"  {wording.saved_word.capitalize()}: {format_timestamp(result['timestamp'])}")
+    _print_message_line(result, wording)
+    _print_partial_lines(result, wording)
     _print_backup_lines(result, wording)
     _print_platform_adaptation(result)
     if result.get("from_other_machine", True):
@@ -75,11 +86,40 @@ def print_restore_result(result: dict, wording: Optional[CommandWording] = None)
         )
 
 
+def _print_message_line(result: dict, wording: CommandWording) -> None:
+    """The version's message: in local wording as "What changed", the way
+    the history list shows it."""
+    if wording.local_words:
+        text = change_text(result.get("message", ""), bool(result.get("automatic")))
+        console.print(f"  What changed: {shown(text)}")
+    elif result.get("message"):
+        console.print(f"  Message: {shown(result['message'])}")
+
+
+def _print_partial_lines(result: dict, wording: CommandWording) -> None:
+    """For ``--only``: what was restored, and why the sync state stays."""
+    only_paths = result.get("only_paths")
+    if not only_paths:
+        return
+    console.print(f"  Only: {shown(', '.join(only_paths))}")
+    if not _changed_any_file(result):
+        return
+    console.print(
+        f"  [dim]Only part of {wording.version_noun(result['id'])} was restored, so this machine "
+        f"is not marked as matching it. The next {wording.save_verb} records the mix as a new "
+        f"{'version' if wording.local_words else 'snapshot'}.[/dim]"
+    )
+
+
+def _changed_any_file(result: dict) -> bool:
+    return any(result.get(count, 0) for count in ("created", "overwritten", "deleted"))
+
+
 def _print_backup_lines(result: dict, wording: CommandWording) -> None:
     if result.get("kept_local"):
         console.print(
             f"  [dim]Kept {result['kept_local']} file(s) that exist only on this machine "
-            f"(`{escape(wording.exact_restore_hint())}` removes them).[/dim]"
+            f"({escape(wording.extras_removal_text(already_done=True))}).[/dim]"
         )
     if result.get("refused_deletes"):
         console.print(
@@ -89,7 +129,8 @@ def _print_backup_lines(result: dict, wording: CommandWording) -> None:
     if result.get("backup_dir"):
         console.print(
             f"  [dim]Replaced files backed up to {escape(result['backup_dir'])}. "
-            f"Run `{escape(command_hint('undo'))}` to revert this {wording.restore_verb}.[/dim]"
+            f"{wording.run_word} `{escape(command_hint('undo'))}` to revert this "
+            f"{wording.restore_verb}.[/dim]"
         )
     else:
         console.print("  [dim]Nothing changed, so no backup was made.[/dim]")
@@ -111,9 +152,10 @@ def _print_platform_adaptation(result: dict) -> None:
 
 
 def print_snapshot_table(snapshots: list[dict], show_keys: bool = False) -> None:
+    """The sync-backend table: id, local time, message, machine, encryption."""
     table = Table(show_header=True, header_style="bold")
     table.add_column("ID", style="cyan", width=4)
-    table.add_column("Timestamp", width=21)
+    table.add_column("Timestamp")
     table.add_column("Message", width=30)
     table.add_column("Machine")
     table.add_column("Encrypted")

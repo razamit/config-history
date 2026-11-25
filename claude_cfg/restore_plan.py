@@ -18,6 +18,7 @@ from claude_cfg import path_matching
 from claude_cfg.content_transform import PathTokenTransform
 from claude_cfg.exclusion_filter import is_excluded
 from claude_cfg.path_matching import CaseProbe, PathMatcher
+from claude_cfg.restore_selection import RestoreSelection
 from claude_cfg.snapshot_contents import SnapshotContents
 from claude_cfg.target_folder import TargetFolderInspector
 from claude_cfg.tracked_files import list_tracked_files, safe_roots
@@ -39,6 +40,9 @@ class RestorePlan:
     such as a symlink that points outside the folder. ``conflicts`` lists
     places where a file and a folder are swapped; a plan with any is refused.
     ``tracked_roots`` are the roots an exact pull may delete inside.
+    ``only_paths`` holds the ``--only`` values of a partial restore, which
+    plans just the members they cover and lists no local extras; it is empty
+    for a full restore.
     """
 
     target_dir: Path
@@ -52,6 +56,11 @@ class RestorePlan:
     left_untouched: dict[str, str] = field(default_factory=dict)
     conflicts: list[str] = field(default_factory=list)
     content_to_write: dict[str, bytes] = field(default_factory=dict, repr=False)
+    only_paths: list[str] = field(default_factory=list)
+
+    @property
+    def partial(self) -> bool:
+        return bool(self.only_paths)
 
     @property
     def files_to_write(self) -> list[str]:
@@ -77,27 +86,44 @@ class RestorePlanner:
         target_dir: Path,
         tracked_roots: list[str],
         exact: bool,
+        selection: Optional[RestoreSelection] = None,
     ) -> RestorePlan:
+        """Raises :class:`RestoreSelectionError` when a ``selection`` path
+        covers nothing, before anything is written."""
         roots = safe_roots(tracked_roots)
         plan = RestorePlan(target_dir=target_dir, tracked_roots=roots, exact=exact)
         matcher = PathMatcher(ignores_case=self._case_probe(target_dir))
         inspector = TargetFolderInspector(target_dir, matcher)
-        members = {
-            name: stored
-            for name, stored in contents.stored_files.items()
-            if not is_excluded(name)
-        }
+        members = self._restorable_members(contents, matcher, selection)
+        plan.only_paths.extend(selection.paths if selection is not None else [])
         chosen = self._one_member_per_name(members, matcher, inspector)
         for member_name in sorted(members):
             if member_name not in chosen:
                 plan.left_untouched[member_name] = CASE_DUPLICATE_REASON
                 continue
             self._classify_snapshot_file(plan, inspector, member_name, members[member_name])
+        if plan.partial:
+            return plan
         member_keys = {matcher.key(name) for name in members}
         plan.only_local.extend(self._only_local(member_keys, matcher, target_dir, roots))
         if exact:
             plan.to_delete.extend(plan.only_local)
         return plan
+
+    @staticmethod
+    def _restorable_members(
+        contents: SnapshotContents, matcher: PathMatcher, selection: Optional[RestoreSelection]
+    ) -> dict[str, bytes]:
+        """The snapshot's members that pass the exclusion filter, narrowed to
+        the ``--only`` paths when there are any."""
+        members = {
+            name: stored
+            for name, stored in contents.stored_files.items()
+            if not is_excluded(name)
+        }
+        if selection is None:
+            return members
+        return {name: members[name] for name in selection.pick(members, matcher)}
 
     @staticmethod
     def _one_member_per_name(

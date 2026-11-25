@@ -49,10 +49,10 @@ dev  = [
 claude-cfg = "claude_cfg.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/razamit/claude-cfg"
-Repository = "https://github.com/razamit/claude-cfg"
-Issues = "https://github.com/razamit/claude-cfg/issues"
-Changelog = "https://github.com/razamit/claude-cfg/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/razamit/config-history"
+Repository = "https://github.com/razamit/config-history"
+Issues = "https://github.com/razamit/config-history/issues"
+Changelog = "https://github.com/razamit/config-history/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

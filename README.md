@@ -2,7 +2,7 @@
 
 > A versioned history of your [Claude Code](https://claude.com/claude-code) settings, so you can go back to an earlier version. Ships as a Claude Code plugin (`config-history`) and as a CLI (`claude-cfg`) that can also sync the history between machines.
 
-[![CI](https://github.com/razamit/claude-cfg/actions/workflows/ci.yml/badge.svg)](https://github.com/razamit/claude-cfg/actions/workflows/ci.yml)
+[![CI](https://github.com/razamit/config-history/actions/workflows/ci.yml/badge.svg)](https://github.com/razamit/config-history/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/claude-cfg.svg)](https://pypi.org/project/claude-cfg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/claude-cfg.svg)](https://pypi.org/project/claude-cfg/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -23,11 +23,11 @@ The `config-history` plugin fixes that. It saves a new version of your config wh
 ## Install the plugin
 
 ```bash
-claude plugin marketplace add razamit/claude-cfg
+claude plugin marketplace add razamit/config-history
 claude plugin install config-history@razamit
 ```
 
-Inside a Claude Code session, the same two steps are `/plugin marketplace add razamit/claude-cfg` and `/plugin install config-history@razamit`.
+Inside a Claude Code session, the same two steps are `/plugin marketplace add razamit/config-history` and `/plugin install config-history@razamit`.
 
 **Requirement:** Python 3.9 or later on your machine. macOS ships 3.9, so a Mac needs nothing extra. If the plugin finds no suitable Python, it shows a notice at session start and stays inactive.
 
@@ -46,41 +46,45 @@ At the start and at the end of a Claude Code session, the plugin compares your t
 When a save happens at session start, you see one line:
 
 ```
-config-history: saved version 2 (2 files changed: settings.json, skills/demo/SKILL.md). Go back with: config-history restore --point 1
+config-history: saved version 2 (2 files changed: settings.json, skills/demo/SKILL.md). To go back, type /config-history:restore
 ```
 
 The notice goes to you and does not enter Claude's context. We checked this in a test session. A save at session end shows nothing.
 
 - **Where the history lives:** `~/.claude-cfg/history/`, in a folder only you can read (mode 700, files 600 on macOS and Linux). It is local and not encrypted by default.
-- **How many versions are kept:** the newest 50 automatic versions. When a new one is saved, the oldest automatic ones beyond 50 are deleted. A version you save yourself with `/config-history:save` is never deleted. To keep a different number, ask Claude to run `config-history config autosave --keep 100`, for example.
+- **How many versions are kept:** the newest 50 automatic versions. When a new one is saved, the oldest automatic ones beyond 50 are deleted. A version you save yourself (ask Claude to "save my settings as before cleanup", or type `/config-history:history save before cleanup`) is never deleted. To keep a different number, ask Claude to run `config-history config autosave --keep 100`, for example.
 - **What is tracked:** `settings.json`, `CLAUDE.md`, and your `commands/`, `skills/`, `agents/`, `plugins/`, `themes/`, `rules/`, `output-styles/` and `workflows/` folders, plus `keybindings.json`. See [What gets tracked](#what-gets-tracked) for the full rules and what is never captured.
 
 ---
 
 ## Go back to an earlier version
 
-The plugin adds six skills. They run only when you type them, and Claude cannot start them on its own.
+There is one thing to remember: type `/config-history:restore`, with nothing after it.
+
+1. It lists your recent versions in plain words, such as `3  2 hours ago (today 18:11)  settings.json changed`, and asks which one you want. You can also name it up front: `/config-history:restore 3`, or `/config-history:restore before the model change`, and Claude picks the matching version and tells you which one it picked.
+2. It shows what going back would change: which files it would create or overwrite. Nothing is written yet.
+3. If more than one file would change, it asks whether you want all of them back or only some. Say "only settings.json" to restore that one file and leave the rest as they are.
+4. It shows the version it picked (number, when it was saved, what changed) and the files that will change, and asks you to confirm. It restores only after a clear yes; anything else means nothing is restored. Claude Code's permission prompt for the restore is a second check on top of that. Files it replaces are copied to `~/.claude-cfg/backups/` before anything is written.
+5. Restart Claude Code so the restored settings load.
+6. If it was a mistake, type `/config-history:undo` and restart again. Claude Code asks for permission before the undo runs, since it changes files.
+
+You can also ask Claude in plain words, such as "what changed in my settings since yesterday?" or "my statusline stopped working, what changed?". Claude can answer from the saved versions on its own, through the `history` skill, which only reads the history and can save a new version when you ask it to. It never restores anything: for that it points you to `/config-history:restore`.
+
+The plugin has three skills:
 
 | Skill | What it does |
 | ----- | ------------ |
-| `/config-history:history` | List the saved versions |
-| `/config-history:diff [version]` | Show what changed since the last saved version, or since the version you name |
-| `/config-history:restore <version> [exact]` | Show a plan, ask you to confirm, then restore that version |
-| `/config-history:undo` | Revert the last restore |
-| `/config-history:save [message]` | Save a version now, with an optional message |
-| `/config-history:status` | Show when your config was last saved |
+| `/config-history:restore [version or description]` | Walks you through going back: pick a version, see what would change, restore all of it or only some files |
+| `/config-history:undo` | Reverts the last restore |
+| `/config-history:history [question]` | Answers questions about the history, lists versions, and saves one when you ask. Claude may also use it by itself when you ask what changed |
 
-The plugin also puts a `config-history` command on the `PATH` of Claude's shell while it is enabled. The skills call it, and the notice names it. It is available to Claude's shell, not to your own terminal. To use the same functions from a terminal, install the CLI (see [Sync between machines](#sync-between-machines-optional)), where the command is `claude-cfg`.
+`restore` and `undo` run only when you type them. Nothing that changes your config runs without a permission prompt: listing versions, comparing and the restore preview do not ask, the real restore and the undo always do. The `history` skill runs `history`, `list`, `diff`, `status` and `save` without a prompt only exactly as written; with anything after them, such as a save label or `--limit 30`, Claude Code asks first. When Claude starts the `history` skill by itself from a plain question, Claude Code asks once whether to run the skill; typing `/config-history:history` does not ask.
 
-**A worked example.** A tool rewrote your `settings.json` and Claude Code now behaves differently.
+A normal restore writes the files in that version and leaves any other tracked files alone. If you also want to delete tracked files that the version does not have, say so (for example "restore version 1 and remove files that are not in it"). Claude then shows the files it would delete and asks you to confirm them before anything runs.
 
-1. Run `/config-history:history` to see the saved versions, with their numbers, times and messages. An automatic version's message says what changed, such as `auto: 2 files changed (settings.json, ...)`.
-2. Run `/config-history:diff 1` to compare your current config with version 1. It lists what restoring that version would create, overwrite and delete. It writes nothing.
-3. Run `/config-history:restore 1`. It prints the plan, asks you to confirm, and restores only after a clear yes. Claude Code then asks for permission to run the real restore; only the dry run runs without asking. Files it replaces are copied to `~/.claude-cfg/backups/` first.
-4. Restart Claude Code so the restored settings load.
-5. If the restore was a mistake, run `/config-history:undo` and restart again. Claude Code asks for permission before the undo runs, since it changes files.
+A partial restore, of only some files, does not mark your config as matching that version, because it does not. The next automatic save records the mix as a new version, so you can still go back to how things were before.
 
-A normal restore writes the files in that version and leaves any other tracked files alone. Add `exact` (`/config-history:restore 1 exact`) to also delete tracked files that version does not have. It lists those files and asks you to confirm them too.
+The plugin also puts a `config-history` command on the `PATH` of Claude's shell while it is enabled. The skills call it. It is available to Claude's shell, not to your own terminal, which is why the notice and the messages name the slash commands. To use the same functions from a terminal, install the CLI (see [Sync between machines](#sync-between-machines-optional)), where the command is `claude-cfg`.
 
 Credentials are never captured, so a restore does not change your sign-in.
 
@@ -124,7 +128,7 @@ The plugin does not edit your `settings.json`. Apart from its own data folder, i
 
 Ask Claude to run `config-history config autosave --disable`, or open `~/.claude-cfg/config.json` and set `"enabled": false` inside the `autosave` section. Turn it back on with `--enable`.
 
-With auto-save off, nothing is saved at session end, and the start hook shows a reminder when tracked files changed since the last version. It does not save. You can still save by hand with `/config-history:save`. To stop the hooks running at all, disable the plugin in `/plugin`.
+With auto-save off, nothing is saved at session end, and the start hook shows a reminder when tracked files changed since the last version. It does not save. You can still save by hand: ask Claude to save your settings, or type `/config-history:history save`. To stop the hooks running at all, disable the plugin in `/plugin`.
 
 ### Uninstall
 
@@ -253,10 +257,11 @@ claude-cfg restore --point 3  # restore a specific snapshot
 | ------- | ------------ |
 | `claude-cfg init` | Optional setup: pick a backend, choose encryption, save config, then push the first snapshot or restore an existing one |
 | `claude-cfg push [message]` (alias `save`) | Snapshot the current `~/.claude/` and store it |
-| `claude-cfg list [--keys]` | Show all snapshots with ID, timestamp, message, machine and whether each is encrypted. `--keys` adds the object key |
+| `claude-cfg list [--limit N] [--keys]` (alias `history`) | Show the snapshots, newest first. For a sync backend: ID, time, message, machine and whether each is encrypted. For the local history (and in the plugin): Version, When and What changed, 10 at a time. `--limit N` shows at most N and the list says how many older ones exist. `--keys` adds the object key |
 | `claude-cfg pull [--point N] [--key KEY]` (alias `restore`) | Restore the latest snapshot, snapshot `#N`, or the one with an exact object key |
 | `claude-cfg pull --dry-run` | Show what a pull would change and write nothing |
 | `claude-cfg pull --exact [--yes]` | Also delete tracked local files that the snapshot does not have. Asks first; `--yes` skips the question |
+| `claude-cfg pull --only PATH` | Restore only this file or folder of the snapshot, such as `--only settings.json --only skills/demo/`. Repeatable. Cannot be combined with `--exact` |
 | `claude-cfg diff [--point N] [--key KEY]` | Compare `~/.claude/` with a snapshot (the latest by default). Writes nothing |
 | `claude-cfg pull --allow-plain`, `diff --allow-plain` | Accept a snapshot that is not encrypted while encryption is on here, such as one pushed before you turned it on |
 | `claude-cfg undo [--force] [--files-only]` | Revert the most recent pull that has not been undone |
@@ -273,7 +278,7 @@ claude-cfg restore --point 3  # restore a specific snapshot
 
 Errors print as one line with no traceback, because a traceback could show a token or a passphrase. Set `CLAUDE_CFG_DEBUG=1` to see the traceback (code lines only, never variable values) when reporting a bug.
 
-`pull`, `diff`, `undo` and `status` list the first 20 files per group. Pass `--all` to see every file. `--point` and `--key` cannot be combined. `claude-cfg --version` (or `-V`) prints the version.
+`pull`, `diff`, `undo` and `status` list the first 20 files per group. Pass `--all` to see every file. `--point` and `--key` cannot be combined. `claude-cfg --version` (or `-V`) prints the version. Times are stored in UTC and shown in this machine's time zone, with a relative phrase for recent ones, such as `2 hours ago (today 18:11)` or `yesterday 09:30`.
 
 **Environment variables**
 
@@ -383,11 +388,14 @@ claude-cfg diff              # compare ~/.claude/ with the latest snapshot
 claude-cfg pull              # restore it
 claude-cfg undo              # changed your mind: revert that pull
 claude-cfg pull --exact      # make the tracked files match the snapshot exactly
+claude-cfg pull --point 3 --only settings.json   # restore one file from snapshot #3
 ```
 
 **Dry run and diff.** Both list what a pull would create, overwrite and delete, and how many files are unchanged. `diff` also names the files that exist only on this machine. Neither writes anything.
 
 **A normal pull** writes the snapshot's files and leaves local files that the snapshot does not have. It tells you how many it kept.
+
+**`--only`.** Restores only the files you name: a file such as `settings.json`, or a folder such as `skills/demo/`, which covers every file under it. Repeat it for more. The plan, the dry run, the backup and `undo` cover only those files. A path that matches nothing in the snapshot stops the pull before anything is written and names the closest matches. Paths with `..` or a leading `/` are refused, and so is a value that starts with `-`, so `--only --dry-run` cannot turn a dry run into a real restore (write `./-name` for a file whose name starts with `-`). Names match the same way as in the rest of the pull, so case is ignored only on a disk that ignores case. MCP servers are never restored by `--only`, and it cannot be combined with `--exact`. A pull with `--only` does not record the snapshot as this machine's last sync, since the machine does not match it afterwards; the next save records the mix as a new snapshot.
 
 **`--exact`.** The snapshot is treated as the whole truth for the tracked folders: local files in them that the snapshot lacks are deleted. It shows the list and asks first, with the default answer no. Pass `--yes` to skip the question. Without a terminal and without `--yes`, the pull stops with an error and changes nothing. Files that are never captured (see above), files outside the tracked paths and files that resolve outside the Claude folder are never deleted. Deletes only happen inside roots that both the snapshot and this machine's config track, so a snapshot cannot widen them. Names are compared ignoring case, Unicode form and trailing dots or spaces, so `skills/Foo/SKILL.md` on disk is the same file as `skills/foo/SKILL.md` in the snapshot and keeps its spelling. With MCP sync on, `--exact` also removes user-scope MCP servers that the snapshot does not list.
 
@@ -499,8 +507,8 @@ Against a dotfiles repo, git is better at history, diffs and merging. What `clau
 ## Development
 
 ```bash
-git clone https://github.com/razamit/claude-cfg.git
-cd claude-cfg
+git clone https://github.com/razamit/config-history.git
+cd config-history
 pip install -e ".[dev]"
 pytest
 ```

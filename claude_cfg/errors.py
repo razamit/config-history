@@ -96,3 +96,7 @@ class PassphraseMismatchError(ClaudeCfgError):
 
 class BackendLimitError(ClaudeCfgError):
     """The storage backend cannot hold or list what claude-cfg needs."""
+
+
+class RestoreSelectionError(ClaudeCfgError, ValueError):
+    """A ``--only`` path is unsafe, matches nothing, or comes with ``--exact``."""

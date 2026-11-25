@@ -3,6 +3,11 @@ apply the plan with :class:`PullManager`.
 
 Splitting the steps lets the CLI show the plan and ask before deleting, and
 lets ``pull --dry-run`` and ``diff`` stop after the first step.
+
+A partial pull (``--only``, see :mod:`claude_cfg.restore_selection`) plans
+and backs up only the files it covers, never touches MCP servers, and leaves
+the sync state alone: the machine does not match the snapshot afterwards,
+so the next save records the mix as a new version.
 """
 
 from dataclasses import dataclass, field
@@ -15,6 +20,7 @@ from claude_cfg.errors import UnsupportedSchemaError
 from claude_cfg.mcp_server_plan import McpServerPlan
 from claude_cfg.mcp_server_sync import McpApplyResult, McpBackupRecord, McpServerSyncManager
 from claude_cfg.restore_plan import RestorePlan, RestorePlanner
+from claude_cfg.restore_selection import RestoreSelection
 from claude_cfg.restore_writer import AppliedRestore, RestoreWriter
 from claude_cfg.snapshot_contents import SnapshotContents
 from claude_cfg.snapshot_index import SnapshotEntry
@@ -69,6 +75,7 @@ def prepare_pull(
     key: Optional[str] = None,
     exact: bool = False,
     mcp_planner: Optional[McpPlanBuilder] = None,
+    selection: Optional[RestoreSelection] = None,
 ) -> PreparedPull:
     """Fetch the snapshot and plan the restore. Writes nothing.
 
@@ -76,7 +83,9 @@ def prepare_pull(
     both the snapshot's tracked list and ``fallback_tracked`` (this machine's
     config, expanded the way push expands it) name. Roots only the snapshot
     names are still written to, but never deleted from. Snapshots older than
-    schema v4 have no list, so the local one is used for both.
+    schema v4 have no list, so the local one is used for both. With a
+    ``selection`` only the members it covers are planned and MCP servers are
+    left out.
     """
     entry = store.find_entry(snapshot_id=snapshot_id, key=key)
     fetched = store.fetch(entry)
@@ -84,8 +93,9 @@ def prepare_pull(
     contents = SnapshotContents.from_zip(fetched.zip_bytes)
     snapshot_roots = contents.tracked if contents.tracked is not None else fallback_tracked
     roots = shared_roots(snapshot_roots, fallback_tracked)
-    plan = planner.plan(contents, target_dir, roots, exact)
-    mcp_plan = mcp_planner(contents, exact) if mcp_planner is not None else None
+    plan = planner.plan(contents, target_dir, roots, exact, selection)
+    plans_mcp = mcp_planner is not None and selection is None
+    mcp_plan = mcp_planner(contents, exact) if plans_mcp else None
     return PreparedPull(
         entry=entry, contents=contents, plan=plan, mcp_plan=mcp_plan, encrypted=fetched.encrypted
     )
@@ -108,7 +118,7 @@ class PullManager:
 
     def apply(self, prepared: PreparedPull, keep_backups: int) -> PullOutcome:
         """Back up, write, delete, apply MCP changes, record the new sync state
-        and prune backups.
+        (not after a partial pull) and prune backups.
 
         Destinations are checked before the backup is taken, so a refused
         pull leaves no backup behind that claims it ran. MCP changes run
@@ -123,6 +133,12 @@ class PullManager:
         )
         applied = self._writer.apply(prepared.plan)
         mcp_result = self._apply_mcp(prepared, mcp_record, backup)
+        if not prepared.plan.partial:
+            self._record_sync_state(prepared)
+        pruned = self._backups.prune(keep_backups)
+        return PullOutcome(prepared, applied, backup, pruned, mcp_result)
+
+    def _record_sync_state(self, prepared: PreparedPull) -> None:
         self._state_store.save(
             sync_state_for(
                 prepared.entry,
@@ -131,12 +147,12 @@ class PullManager:
                 action="pull",
             )
         )
-        pruned = self._backups.prune(keep_backups)
-        return PullOutcome(prepared, applied, backup, pruned, mcp_result)
 
     def _mcp_record_for(self, prepared: PreparedPull) -> Optional[McpBackupRecord]:
         mcp_plan = prepared.mcp_plan
         if self._mcp_manager is None or mcp_plan is None or not mcp_plan.has_changes:
+            return None
+        if prepared.plan.partial:
             return None
         return McpBackupRecord.from_plan(mcp_plan)
 

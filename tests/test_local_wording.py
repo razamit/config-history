@@ -68,12 +68,13 @@ def test_local_history_restore_and_undo_wording(monkeypatch, local_history):
     invoke("save", "one")
     write_files(claude_dir(), {"skills/new/SKILL.md": "x", "settings.json": '{"a": 2}'})
     preview = invoke("restore", "--point", "1", "--dry-run")
-    assert "Version 1 (" in preview and "Snapshot" not in preview
-    assert "`config-history restore --exact` would remove them" in preview
+    assert "Version 1, saved " in preview and "Snapshot" not in preview
+    assert "`/config-history:restore` removes them if asked to" in preview
     restored = invoke("restore", "--point", "1")
     assert "Version 1 restored" in restored
-    assert "`config-history restore --exact` removes them" in restored
-    assert "Run `config-history undo` to revert this restore." in restored
+    assert "`/config-history:restore` removes them if you ask it to" in restored
+    assert "Type `/config-history:undo` to revert this restore." in restored
+    assert "config-history restore" not in restored and "config-history undo" not in restored
     assert CREDENTIALS_LINE not in restored, "same machine"
     assert "Undid the restore of version 1" in invoke("undo")
 
@@ -81,7 +82,7 @@ def test_local_history_restore_and_undo_wording(monkeypatch, local_history):
 def test_local_history_status_has_no_remote_line(local_history):
     invoke("save", "one")
     status = invoke("status")
-    assert "Last saved: version 1 (" in status
+    assert "Last saved: version 1, just now (" in status
     assert "Remote" not in status and "Last synced" not in status
 
 

@@ -2,6 +2,36 @@
 
 Status: OPEN · Priority: HIGH · Type: verification gap · Cost: none
 
+> Update 2026-11-25, easy-flow work (decision row 15): the plugin now has
+> three skills, not the six listed under Evidence, and two more behaviors are
+> unverified in any real session, headless or interactive. First, the guided
+> `/config-history:restore` flow: picking a version from words such as
+> "yesterday", offering only some files, and above all the confirmation in the
+> conversation before the real restore, which exists only as skill text and a
+> test on that text. Second, whether Claude starts the `history` skill by
+> itself from a plain question such as "what changed in my settings?". Both
+> belong in the session described under Scope to decide. See also
+> `command-substitution-under-wildcard-allow-rules-not-tested-live.md`.
+
+> Update 2026-11-25, later the same day: the second of those was checked in
+> three headless sessions the owner approved (Claude Code 2.1.332, Haiku,
+> `--plugin-dir`, default permission mode, tool data in a scratch
+> `CLAUDE_CFG_HOME`, deleted afterwards). The plugin registered three skills
+> (`config-history:history`, `:restore`, `:undo`). Asked "what changed in my
+> settings?" with no command, Claude's first tool call was
+> `Skill {"skill": "config-history:history", "args": "what changed in my
+> settings"}`, so the pickup works. Claude Code then refused it with "Execute
+> skill: config-history:history. The user can add the allow rule
+> Skill(config-history:history)": a skill Claude starts by itself needs the
+> user's approval once, which a headless session cannot give. In an
+> interactive session that is one prompt; how it looks is still unseen. Typed
+> as `/config-history:history what changed in my settings?`, the skill ran
+> `config-history history` and `config-history status` with no permission
+> denial and answered from the one saved version, so the five exact
+> pre-approved commands match in practice. Still unverified in any real
+> session: the guided restore flow and its confirmation in the conversation,
+> `/config-history:undo`, the on-screen notice, and the save at session end.
+
 > Blocks publishing with confidence (decision row 12). Differs from
 > `plugin-launcher-untested-on-windows-and-linux.md`, which is about other
 > operating systems; this one is about the interactive terminal on macOS.

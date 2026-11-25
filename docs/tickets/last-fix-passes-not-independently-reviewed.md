@@ -2,6 +2,14 @@
 
 Status: OPEN · Priority: MEDIUM · Type: review gap · Cost: none
 
+> Update 2026-11-25, easy-flow work: a third pass joins the two below. The
+> easy-flow build was independently reviewed (9 findings), and the fix pass
+> that answered them (`590 passed` to `624 passed`, 23 files) was checked by
+> both suites, a throwaway-home run and the planner reading the skills and
+> `restore_selection.py`, `time_display.py`, `cli/output.py` and
+> `program_name.py`, but not by an independent reviewer. Its widest part is the
+> reworded hints across 13 code files (decision row 17).
+
 ## Symptom
 
 Two rounds of fixes were checked by the test suite and by end-to-end runs, but
