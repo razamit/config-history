@@ -191,7 +191,8 @@ def test_unsafe_program_name_falls_back(default_setup, monkeypatch):
 def test_save_and_restore_are_aliases(default_setup):
     help_text = runner.invoke(app, ["--help"], env={"COLUMNS": "200"}).output
     assert "save" in help_text and "Same as push" in help_text and "Same as pull" in help_text
-    assert "[MESSAGE]" in runner.invoke(app, ["save", "--help"]).output
+    # Typer 0.29 prints the argument as [message], older versions as [MESSAGE].
+    assert "[OPTIONS] [MESSAGE]" in runner.invoke(app, ["save", "--help"]).output.upper()
     restore_help = runner.invoke(app, ["restore", "--help"]).output
     for option in ("--point", "--key", "--dry-run", "--exact", "--yes"):
         assert option in restore_help
