@@ -100,9 +100,9 @@ def test_exact_plan_removes_local_only_servers(transform):
 def test_server_differing_only_by_home_is_unchanged(tmp_path):
     source = PathTokenTransform(home=tmp_path / "a", sep="/", python="python3")
     target = PathTokenTransform(home=tmp_path / "b", sep="/", python="python3")
-    definition = {"command": "node", "args": [f"{tmp_path}/a/s.js"]}
+    definition = {"command": "node", "args": [str(tmp_path / "a" / "s.js")]}
     stored = source.to_stored(MCP_SERVERS_MEMBER, json.dumps({"s": definition}).encode())
-    moved = {"command": "node", "args": [f"{tmp_path}/b/s.js"]}
+    moved = {"command": "node", "args": [str(tmp_path / "b" / "s.js")]}
     plan = McpServerPlanner(target).plan(stored, {"s": moved}, exact=True)
     assert plan.unchanged == ["s"] and not plan.has_changes
 

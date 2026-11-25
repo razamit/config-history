@@ -12,7 +12,8 @@ def stdio_server(script: str = "server.js", key: str = SECRET) -> dict:
     return {
         "type": "stdio",
         "command": "node",
-        "args": [f"{home_dir()}/mcp/{script}"],
+        # Native, as a restore writes it on this system.
+        "args": [str(home_dir() / "mcp" / script)],
         "env": {"API_KEY": key},
     }
 

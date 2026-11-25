@@ -72,13 +72,23 @@ def test_failing_start_hook_prints_nothing_and_logs(plugin_env):
     assert "broken" in Path(paths.log_file).read_text()
 
 
-def test_start_writes_owner_only_pointer_file(plugin_env, tmp_path):
+posix_modes_only = pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows has no POSIX permission bits, so mode 0o600 does not exist there")
+
+
+def test_start_writes_pointer_file_in_tool_home(plugin_env, tmp_path):
     plugin_env["CLAUDE_CFG_HOME"] = str(tmp_path / "tool home")
     paths = install_environment(plugin_env)
     run_main(plugin_env, "start")
     pointer = tmp_path / "tool home" / "plugin-python"
     assert pointer.read_bytes() == (paths.environment_python(CURRENT_ENVIRONMENT) + "\n").encode()
-    assert stat.S_IMODE(pointer.stat().st_mode) == 0o600
+
+
+@posix_modes_only
+def test_start_writes_owner_only_pointer_file(plugin_env):
+    paths = install_environment(plugin_env)
+    run_main(plugin_env, "start")
+    assert stat.S_IMODE(Path(paths.pointer_file).stat().st_mode) == 0o600
 
 
 def test_pointer_file_defaults_to_home_claude_cfg(plugin_env):
@@ -203,10 +213,17 @@ def test_install_with_pip_writes_marker_pointer_and_saves_first_version(plugin_e
     assert observed["staged_pyproject"] and not observed["staged_tests"]
     assert json.loads(Path(paths.marker_file).read_text()) == {
         "version": PLUGIN_VERSION, "plugin_root": paths.plugin_root, "environment": environment}
-    assert stat.S_IMODE(Path(paths.pointer_file).stat().st_mode) == 0o600
+    assert Path(paths.pointer_file).read_text() == python + "\n"
     assert not os.path.exists(paths.lock_file)
     assert not os.path.exists(paths.staging_dir)
     assert run_main(plugin_env, "start") == "", "the next start uses the new install"
+
+
+@posix_modes_only
+def test_install_writes_owner_only_pointer_file(plugin_env):
+    paths = paths_for(plugin_env)
+    run_main(plugin_env, "install", runner=FakeRunner(fake_install_responder(paths, {})))
+    assert stat.S_IMODE(Path(paths.pointer_file).stat().st_mode) == 0o600
 
 
 def test_install_uses_uv_when_available(plugin_env):

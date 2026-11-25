@@ -1,6 +1,7 @@
 """Precise backups before a pull, undo, and pruning."""
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -98,7 +99,7 @@ def test_undo_refuses_when_files_changed_after_pull(provider):
 def test_undo_explains_a_legacy_backup(provider):
     legacy = backups_dir() / "20991231T000000Z"
     write_files(legacy, {"settings.json": "{}"})
-    with pytest.raises(LegacyBackupError, match=str(legacy)):
+    with pytest.raises(LegacyBackupError, match=re.escape(str(legacy))):
         core.undo()
 
 

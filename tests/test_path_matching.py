@@ -17,6 +17,9 @@ LOOKALIKES = {
     "skills/Readme.md": "A", "skills/README.md": "B", "skills/straße.md": "C",
     "skills/strasse.md": "D", "skills/notes.md.": "E", "skills/notes.md": "F",
 }
+# Windows ignores a trailing dot, so there "notes.md." and "notes.md" are one
+# file whatever the case rule: only "notes.md" is restored.
+DOT_TWIN_LEFT_ON_WINDOWS = ["skills/notes.md."] if os.name == "nt" else []
 
 
 @pytest.fixture
@@ -78,8 +81,8 @@ def test_case_sensitive_target_restores_every_lookalike(force_case):
     provider = MemoryProvider()
     store_raw_zip(provider, hostile_zip(LOOKALIKES, ["skills"]))
     plan = core.prepare_pull(None, CFG, provider).plan
-    assert sorted(plan.to_create) == sorted(LOOKALIKES)
-    assert plan.left_untouched == {}
+    assert sorted(plan.to_create) == sorted(set(LOOKALIKES) - set(DOT_TWIN_LEFT_ON_WINDOWS))
+    assert list(plan.left_untouched) == DOT_TWIN_LEFT_ON_WINDOWS
 
 
 def test_case_insensitive_target_folds_case_only(force_case):
@@ -87,9 +90,10 @@ def test_case_insensitive_target_folds_case_only(force_case):
     provider = MemoryProvider()
     store_raw_zip(provider, hostile_zip(LOOKALIKES, ["skills"]))
     plan = core.prepare_pull(None, CFG, provider).plan
-    assert list(plan.left_untouched) == ["skills/Readme.md"]
+    assert list(plan.left_untouched) == ["skills/Readme.md"] + DOT_TWIN_LEFT_ON_WINDOWS
     assert "skills/straße.md" in plan.to_create and "skills/strasse.md" in plan.to_create
-    assert "skills/notes.md." in plan.to_create and "skills/notes.md" in plan.to_create
+    assert "skills/notes.md" in plan.to_create
+    assert ("skills/notes.md." in plan.to_create) == (os.name != "nt")
 
 
 def test_case_insensitive_target_prefers_the_member_spelled_like_the_disk(force_case):

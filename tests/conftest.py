@@ -1,4 +1,5 @@
 import pytest
+import typer.rich_utils
 
 import claude_cfg.paths as paths_mod
 from claude_cfg.command_runner import SubprocessCommandRunner
@@ -26,6 +27,18 @@ def isolated_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv(CLAUDE_CODE_SESSION_ENV, raising=False)
     monkeypatch.delenv("CLAUDE_CFG_DEBUG", raising=False)
     return home
+
+
+@pytest.fixture(autouse=True)
+def plain_help_output(monkeypatch):
+    """Render --help as plain text everywhere, as it is in a local terminal.
+
+    Typer forces colour when GITHUB_ACTIONS, FORCE_COLOR or PY_COLORS is set,
+    reading them once at import. Colour codes then split ``--key`` into
+    ``-`` and ``-key``, so tests that look for an option name would fail
+    only in CI. ``force_terminal=False`` also outranks FORCE_COLOR in Rich.
+    """
+    monkeypatch.setattr(typer.rich_utils, "FORCE_TERMINAL", False)
 
 
 class RealCommandRunAttempted(AssertionError):

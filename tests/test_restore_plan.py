@@ -64,11 +64,13 @@ def test_plan_classifies_every_group(tmp_path):
 
 def test_file_differing_only_by_home_path_is_unchanged(tmp_path):
     source, target = tmp_path / "home1" / ".claude", tmp_path / "home2" / ".claude"
-    settings = {"statusLine": {"command": "python {}/statusline.py"}}
-    source_settings = json.dumps(settings).replace("{}", str(source))
-    write_files(source, {"settings.json": source_settings})
+    def settings_for(launcher, claude_folder):
+        # json.dumps escapes the path, so a Windows backslash stays valid JSON.
+        return json.dumps({"statusLine": {"command": f"{launcher} {claude_folder / 'statusline.py'}"}})
+
+    write_files(source, {"settings.json": settings_for("python", source)})
     # The target spells its own home, a different launcher and compact JSON.
-    target_settings = json.dumps(settings).replace("{}", str(target)).replace("python ", "python3 ")
+    target_settings = settings_for("python3", target)
     write_files(target, {"settings.json": target_settings})
     contents = SnapshotContents.from_zip(snap.create_zip(["settings.json"], source, 1, "m"))
 

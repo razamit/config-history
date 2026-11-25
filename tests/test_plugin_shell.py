@@ -136,6 +136,8 @@ def test_launcher_skips_macos_stub_without_command_line_tools(shell, sandbox):
 
 
 @pytest.mark.parametrize("event", ["SessionStart", "SessionEnd"])
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="needs /bin/sh and a shell-script fake python, which Windows does not have")
 def test_hook_command_from_hooks_json_runs_through_sh(event, sandbox):
     """Runs the hooks.json command string the way Claude Code does, with sh -c."""
     os.symlink("/bin/sh", str(sandbox["bin"] / "sh"))
@@ -217,6 +219,8 @@ def test_wrapper_without_environment_explains_and_exits_1(shell, sandbox, pointe
 
 
 @pytest.mark.parametrize("path", [WRAPPER, LAUNCHER])
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="Windows file systems have no POSIX executable bit")
 def test_scripts_are_executable_on_disk(path):
     assert path.stat().st_mode & stat.S_IXUSR
 

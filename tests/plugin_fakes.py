@@ -6,6 +6,7 @@ starts a detached process. All paths live under pytest's tmp_path.
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -89,7 +90,8 @@ def make_plugin_env(tmp_path):
 
 
 def paths_for(env):
-    return resolve_paths(env, fallback_plugin_root="unused")
+    """The paths the bootstrap itself resolves on this system (Scripts\\python.exe on Windows)."""
+    return resolve_paths(env, fallback_plugin_root="unused", is_windows=os.name == "nt")
 
 
 def install_environment(env, marker_overrides=None, environment=CURRENT_ENVIRONMENT):
@@ -132,7 +134,7 @@ def fake_install_responder(paths, observed, fail_on=None):
         if fail_on and fail_on in args:
             return CommandResult(1, "", "pip: no matching distribution")
         if "venv" in args:
-            python = Path(args[-1]) / "bin" / "python"
+            python = Path(paths.environment_python(Path(args[-1]).name))
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_text("")
         if "install" in args:

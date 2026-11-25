@@ -56,7 +56,8 @@ def test_snapshot_moves_between_default_and_configured_folders(isolated_home, tm
     folder with each token pointing at the right place, and back again."""
     provider = MemoryProvider()
     cfg = {"storage": "local", "tracked": ["settings.json"]}
-    settings = {"hooks": f"node {claude_dir()}/hooks/a.js", "log": f"{isolated_home}/logs/x"}
+    # Native paths: a restore writes the restoring system's separator.
+    settings = {"hooks": f"node {claude_dir() / 'hooks' / 'a.js'}", "log": str(isolated_home / "logs" / "x")}
     write_files(claude_dir(), {"settings.json": json.dumps(settings), "hooks/a.js": "1"})
     core.push("plain", cfg, provider)
 
@@ -64,7 +65,7 @@ def test_snapshot_moves_between_default_and_configured_folders(isolated_home, tm
     monkeypatch.setenv(paths_mod.CLAUDE_CONFIG_DIR_ENV, str(configured))
     core.pull(None, cfg, provider)
     restored = json.loads((configured / "settings.json").read_text())
-    assert restored == {"hooks": f"node {configured}/hooks/a.js", "log": f"{isolated_home}/logs/x"}
+    assert restored == {"hooks": f"node {configured / 'hooks' / 'a.js'}", "log": settings["log"]}
 
     core.push("moved", cfg, provider)
     monkeypatch.delenv(paths_mod.CLAUDE_CONFIG_DIR_ENV)

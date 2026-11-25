@@ -32,7 +32,10 @@ def _hook():
     return runner.invoke(app, ["status", "--hook"])
 
 
-def test_remote_newer_prints_one_system_message(cfg, tmp_path):
+def test_remote_newer_prints_one_system_message(cfg, tmp_path, monkeypatch):
+    # A fixed name: a CI runner's host name can pass MACHINE_NAME_LIMIT and
+    # is then shortened on purpose (see test_backend_trust.py).
+    monkeypatch.setattr(socket, "gethostname", lambda: "work-laptop")
     other = tmp_path / "other"
     write_files(other, {"CLAUDE.md": "# other"})
     push_from_other_machine(get_provider(cfg), other, ["CLAUDE.md"], "from laptop")
@@ -43,7 +46,7 @@ def test_remote_newer_prints_one_system_message(cfg, tmp_path):
     document = json.loads(lines[0])
     assert list(document) == ["systemMessage"]
     message = document["systemMessage"]
-    assert "#2" in message and socket.gethostname() in message and "claude-cfg pull" in message
+    assert "#2" in message and "from work-laptop (" in message and "claude-cfg pull" in message
     assert "\n" not in message
 
 
