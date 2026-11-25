@@ -1,0 +1,26 @@
+{
+  "name": "config-history",
+  "displayName": "Config History",
+  "version": "0.3.0",
+  "description": "Keeps a versioned history of your Claude Code configuration so you can see what changed and restore an earlier version.",
+  "author": {
+    "name": "Amit Razam"
+  },
+  "homepage": "https://github.com/razamit/config-history",
+  "repository": "https://github.com/razamit/config-history",
+  "license": "MIT",
+  "keywords": [
+    "config",
+    "history",
+    "backup",
+    "restore",
+    "snapshots",
+    "settings"
+  ],
+  "network": {
+    "hosts": [
+      "pypi.org",
+      "files.pythonhosted.org"
+    ]
+  }
+}

@@ -30,8 +30,8 @@ class S3Provider(StorageProvider):
         self._bucket = backend_cfg["bucket"]
         self._s3 = boto3.client("s3", **kwargs)
 
-    def upload(self, key: str, data: bytes) -> None:
-        self._s3.put_object(Bucket=self._bucket, Key=key, Body=data)
+    def upload(self, key: str, content: bytes) -> None:
+        self._s3.put_object(Bucket=self._bucket, Key=key, Body=content)
 
     def download(self, key: str) -> bytes:
         response = self._s3.get_object(Bucket=self._bucket, Key=key)
@@ -51,3 +51,7 @@ class S3Provider(StorageProvider):
             return True
         except self._s3.exceptions.ClientError:
             return False
+
+    def delete(self, key: str) -> None:
+        # S3 and R2 both treat deleting a missing key as success.
+        self._s3.delete_object(Bucket=self._bucket, Key=key)

@@ -13,9 +13,30 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      # One job failing must not cancel the others: each one is a separate
+      # operating system and Python version.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        exclude:
+          # ubuntu-latest is Ubuntu 26.04, and actions/python-versions has no
+          # build of 3.9 for it.
+          - os: ubuntu-latest
+            python-version: "3.9"
+          # actions/python-versions has only an x64 macOS build of 3.9, and
+          # macos-latest is arm64. The x64 build cannot load its libraries
+          # there (it looks for Intel Homebrew under /usr/local).
+          - os: macos-latest
+            python-version: "3.9"
+        include:
+          # 3.9 on Linux runs on the newest image that still has a build.
+          - os: ubuntu-24.04
+            python-version: "3.9"
+          # 3.9 on macOS runs on a standard Intel runner. macOS ships 3.9.6
+          # as /usr/bin/python3, which is why the tool supports 3.9.
+          - os: macos-15-intel
+            python-version: "3.9"
 
     steps:
       - uses: actions/checkout@v6

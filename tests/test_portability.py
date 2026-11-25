@@ -175,10 +175,10 @@ def test_plugin_caches_and_clones_excluded(tmp_path):
     claude = tmp_path / ".claude"
     plugins = claude / "plugins"
     plugins.mkdir(parents=True)
-    # Portable manifests — kept.
+    # Portable manifests are kept.
     (plugins / "installed_plugins.json").write_text("{}")
     (plugins / "known_marketplaces.json").write_text("{}")
-    # Re-fetchable trees — dropped.
+    # Re-fetchable trees are dropped.
     (plugins / "cache" / "a").mkdir(parents=True)
     (plugins / "cache" / "a" / "big.js").write_text("x")
     (plugins / "marketplaces" / "m" / ".git").mkdir(parents=True)
@@ -207,12 +207,14 @@ def test_nested_git_and_node_modules_excluded(tmp_path):
     assert all("/.git/" not in n and "/node_modules/" not in n for n in names)
 
 
-def test_manifest_schema_v3(tmp_path):
+def test_manifest_schema_v4(tmp_path):
     claude = tmp_path / ".claude"
     claude.mkdir(parents=True)
     (claude / "CLAUDE.md").write_text("# hi")
     manifest = snap.read_manifest(snap.create_zip(["CLAUDE.md"], claude, 1, "t"))
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
+    assert manifest["tracked"] == ["CLAUDE.md"]
+    assert set(manifest["file_hashes"]) == {"CLAUDE.md"}
     assert "source_platform" in manifest
     assert manifest["source_home"] == "${HOME}"
 

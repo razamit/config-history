@@ -10,4 +10,4 @@ If you experience or witness behaviour that violates this code, please contact t
 
 ## Scope
 
-This applies to all project spaces — issues, pull requests, discussions, and any other forum where people interact as part of the project.
+This applies to all project spaces: issues, pull requests, discussions, and any other forum where people interact as part of the project.

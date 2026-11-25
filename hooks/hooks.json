@@ -1,0 +1,28 @@
+{
+  "description": "Saves a version of your Claude Code config when a session starts and ends.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/config-history-hook.sh\" start",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/config-history-hook.sh\" end",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

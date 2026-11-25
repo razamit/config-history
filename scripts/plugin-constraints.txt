@@ -1,0 +1,23 @@
+# Exact versions for the plugin's private environment.
+# The installer passes this file to pip (or uv) as a constraints file, so a
+# plugin install gets these versions of the runtime dependencies in
+# pyproject.toml and of everything they pull in.
+#
+# Maintained with each release: resolve the dependencies again in fresh
+# environments on Python 3.9 and on a current Python, check that the tool
+# runs on both, and update the pins. Use environment markers only where one
+# version cannot serve both.
+
+annotated-doc==0.0.5
+cffi==2.0.0
+click==8.1.8; python_version < "3.10"
+click==8.5.1; python_version >= "3.10"
+cryptography==50.0.2
+markdown-it-py==3.0.0
+mdurl==0.1.2
+pycparser==2.23
+Pygments==2.21.0
+rich==15.0.0
+shellingham==1.5.4
+typer==0.23.2
+typing_extensions==4.16.0

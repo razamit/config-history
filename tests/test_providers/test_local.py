@@ -44,3 +44,14 @@ def test_download_missing_raises(provider):
 def test_upload_creates_parent_dirs(provider):
     provider.upload("deep/nested/dir/file.txt", b"data")
     assert provider.exists("deep/nested/dir/file.txt")
+
+
+def test_delete_removes_key(provider):
+    provider.upload("snapshots/001_x.zip", b"zip")
+    provider.delete("snapshots/001_x.zip")
+    assert not provider.exists("snapshots/001_x.zip")
+    assert provider.list_keys("snapshots/") == []
+
+
+def test_delete_missing_key_is_not_an_error(provider):
+    provider.delete("snapshots/never-existed.zip")

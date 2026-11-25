@@ -54,12 +54,12 @@ class SFTPProvider(StorageProvider):
             except FileNotFoundError:
                 self._sftp.mkdir(path)
 
-    def upload(self, key: str, data: bytes) -> None:
+    def upload(self, key: str, content: bytes) -> None:
         remote = self._remote_path(key)
         parent = "/".join(remote.split("/")[:-1])
         self._mkdir_p(parent)
         with self._sftp.open(remote, "wb") as f:
-            f.write(data)
+            f.write(content)
 
     def download(self, key: str) -> bytes:
         remote = self._remote_path(key)
@@ -93,6 +93,12 @@ class SFTPProvider(StorageProvider):
             return True
         except FileNotFoundError:
             return False
+
+    def delete(self, key: str) -> None:
+        try:
+            self._sftp.remove(self._remote_path(key))
+        except FileNotFoundError:
+            pass
 
     def close(self) -> None:
         self._sftp.close()

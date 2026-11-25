@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 class StorageProvider(ABC):
 
     @abstractmethod
-    def upload(self, key: str, data: bytes) -> None:
+    def upload(self, key: str, content: bytes) -> None:
         """Upload bytes to the given key/path."""
         ...
 
@@ -21,4 +21,9 @@ class StorageProvider(ABC):
     @abstractmethod
     def exists(self, key: str) -> bool:
         """Check if a key exists."""
+        ...
+
+    @abstractmethod
+    def delete(self, key: str) -> None:
+        """Remove the object at ``key``. A missing key is not an error."""
         ...

@@ -20,4 +20,4 @@ claude-cfg new-command --some-flag
 Other approaches you thought about and why they don't fit.
 
 ## Additional context
-Anything else — links, related issues, prior art.
+Anything else, such as links, related issues or prior art.
