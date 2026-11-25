@@ -24,15 +24,19 @@ jobs:
           # build of 3.9 for it.
           - os: ubuntu-latest
             python-version: "3.9"
+          # actions/python-versions has only an x64 macOS build of 3.9, and
+          # macos-latest is arm64. The x64 build cannot load its libraries
+          # there (it looks for Intel Homebrew under /usr/local).
+          - os: macos-latest
+            python-version: "3.9"
         include:
           # 3.9 on Linux runs on the newest image that still has a build.
           - os: ubuntu-24.04
             python-version: "3.9"
-          # actions/python-versions has no arm64 macOS build of 3.9, and
-          # macos-latest is arm64, so 3.9 runs as x64 there.
-          - os: macos-latest
+          # 3.9 on macOS runs on a standard Intel runner. macOS ships 3.9.6
+          # as /usr/bin/python3, which is why the tool supports 3.9.
+          - os: macos-15-intel
             python-version: "3.9"
-            architecture: x64
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +45,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: ${{ matrix.architecture }}
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
