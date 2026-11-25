@@ -6,6 +6,25 @@ files touched, cross-refs to decisions and tickets. Never rewrite old entries.
 
 ---
 
+**2026-11-25: GitHub repository renamed to `razamit/config-history` (docs only in the repo, one change on GitHub, no code). ✅ DONE.**
+Carries out decision row 16. The easy-flow commit `700ed85` was pushed while
+the repository was still `razamit/claude-cfg`; the rename in GitHub's settings
+did not take effect twice (the API kept returning the old name and "Could not
+resolve" for the new one), so the owner asked for it to be done from here with
+`gh repo rename config-history -R razamit/claude-cfg --yes`. Proof:
+`gh repo view razamit/config-history` returns
+`{"nameWithOwner":"razamit/config-history","url":"https://github.com/razamit/config-history","visibility":"PUBLIC"}`;
+`origin` now reads `https://github.com/razamit/config-history.git` and
+`git fetch` leaves the branch in sync at `700ed85`; `git ls-remote` on the old
+URL returns the same head, so the redirect works; the CI badge URL answers 200.
+Not done and not claimed: the install command in the README still cannot work,
+because `.claude-plugin/marketplace.json` is on this branch and missing from
+`main` (404). That check waits for the merge and keeps
+`docs/tickets/install-command-names-a-repo-that-does-not-exist-yet.md` open
+(updated). The owner also decided to keep the `history` skill's exact
+pre-approved commands after the live test (decision row 19; no file changed by
+it). Files: `docs/PROGRESS.md`, `docs/DECISIONS.md`, the ticket above.
+
 **2026-11-25: Easy flow for the `config-history` plugin: one guided restore command, three skills, plain history, local times, single-file restore (offline, code + tests + docs, no spend). 🟡 PARTIAL [unreleased]**
 Trigger: the owner's bar for a newly installed plugin, "it should be super easy
 or it won't work", and the choice "Essentials + extras" from the options laid

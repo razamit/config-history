@@ -2,6 +2,19 @@
 
 Status: OPEN · Priority: HIGH · Type: publishing blocker, owner action · Cost: none
 
+> Update 2026-11-25, later the same day: the repository is renamed. The owner
+> asked Claude to run `gh repo rename config-history -R razamit/claude-cfg`
+> after the rename in GitHub's settings did not take effect twice.
+> `gh repo view razamit/config-history` now returns
+> `{"nameWithOwner":"razamit/config-history", ... "visibility":"PUBLIC"}`, this
+> clone's `origin` is `https://github.com/razamit/config-history.git`, the old
+> name redirects (`git ls-remote` on it returns the same head, `700ed85`), and
+> the CI badge URL answers 200. Steps 1 and 2 of the Fix are done. Step 3 is
+> not: `.claude-plugin/marketplace.json` exists on `feat/hardening-and-coverage`
+> and returns 404 on `main`, so `claude plugin marketplace add
+> razamit/config-history` cannot work until the branch is merged. The ticket
+> stays open for that one check, which was not run.
+
 > Follows from decision row 16 (the owner chose to rename the repository).
 > Blocks publishing (decision row 12). The rename on GitHub is the owner's to
 > do.
