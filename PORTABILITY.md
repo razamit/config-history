@@ -1,274 +1,240 @@
-# claude-cfg — Portability & Restore Spec
+# claude-cfg: Portability and Restore
 
-> Companion to `PLAN.md`. `PLAN.md` defines the storage layer (providers, snapshot zip, `index.json`, CLI). This file defines the layer above it: **what gets captured, how it is made platform-neutral, and how it is restored correctly on Windows, macOS, Linux, or WSL.**
-> Drop this in the repo root and reference it from `CLAUDE.md` alongside `PLAN.md`.
+This file describes the layer above storage: what gets captured, how it is made platform-neutral, and how it is restored on Windows, macOS, Linux or WSL. Storage itself (backends, object names, the index, encryption) is covered in [README.md](README.md). The last section lists ideas from the original design that are not built.
 
 ---
 
 ## 1. Core principle
 
-The tool must **never copy the whole `~/.claude/` folder**. It captures an explicit allowlist, classifies each entry, transforms platform-bound content into neutral form on capture, and reverses the transform on restore. Allowlist, not denylist: a denylist leaks new secret files the moment Claude Code adds one.
+`claude-cfg` never copies the whole `~/.claude/` folder. It captures the paths on an explicit tracked list, skips a fixed set of secrets and machine state, rewrites machine-bound paths into tokens, and reverses that on restore.
 
-Three passes on capture: **collect -> classify -> transform-out (tokenize + redact)**.
-Three passes on restore: **transform-in (expand + platform-select) -> merge -> validate**.
+Capture: **list tracked files, drop excluded ones, tokenize.**
+Restore: **fetch (decrypt if needed), plan, back up, write, expand tokens.**
+
+If `CLAUDE_CONFIG_DIR` is set to an absolute path, it replaces `~/.claude/` everywhere in this file, and `.claude.json` is read from inside it.
+
+`CLAUDE_CFG_HOME`, also an absolute path only, moves the tool's own folder (`~/.claude-cfg/`: the config, sync state, pull backups and the default local history) somewhere else. A relative value is ignored.
+
+The tool runs on Python 3.9 or later. CI runs it on 3.9 to 3.13 on Linux, macOS and Windows.
 
 ---
 
-## 2. File taxonomy
+## 2. What is captured
 
-Every candidate path falls into exactly one category. The category decides the handler.
+### The tracked list
 
-| Category | Meaning | Handler on capture | Handler on restore |
-|---|---|---|---|
-| `verbatim` | Pure portable text/markdown, no paths, no platform deps | Copy bytes, hash | Write bytes |
-| `tokenized` | Text containing absolute/home paths | Rewrite home paths to tokens, normalize separators to `/` | Expand tokens to target home, fix separators for shell fields |
-| `extract` | A whitelisted subset pulled out of a larger machine-bound file | Pull only allowed keys, tokenize, redact | Merge subset into existing target file |
-| `hooks` | Hook commands (the fragile part) | Detect platform deps, store per-platform variants or flag | Select target-platform variant, warn on flagged |
-| `excluded` | Secrets, transient state, machine-bound history | Never captured | n/a |
-
-### Default include set
+Defaults:
 
 ```
-verbatim:
-  CLAUDE.md
-  commands/**         (*.md)
-  agents/**           (*.md)
-  skills/**           (all files, including bundled scripts/assets)
-  hooks/**            (script files, if hooks are externalized — see §6)
-
-tokenized:
-  settings.json
-  settings.local.json   (optional, off by default: personal/experimental)
-
-extract:
-  ~/.claude.json        (global mcpServers ONLY — see §5)
+settings.json    CLAUDE.md     commands/     skills/      agents/
+plugins/         keybindings.json            themes/      rules/
+output-styles/   workflows/
 ```
 
-### Default exclude set (never captured, even if present)
+The list is saved in the config at `init` and can be edited. `claude-cfg config track-defaults` adds defaults that an older list lacks. On push, files under `~/.claude/` that a tracked file refers to (as `~/.claude/<path>`, `${CLAUDE_HOME}/<path>` or an absolute path) are added too, so externalized hook and status-line scripts travel. References that resolve outside the Claude folder are ignored.
+
+`settings.local.json` is not in the defaults. Add it yourself if you want local overrides to travel.
+
+### How each file is treated
+
+| File | On capture | On restore |
+|---|---|---|
+| JSON file | Every string value is tokenized (paths, then the python launcher). The file is rewritten only if something changed | Tokens are expanded in every string value |
+| Other text file | Machine paths are replaced with tokens | Tokens are expanded |
+| Binary file (a null byte or invalid UTF-8) | Copied as is | Written as is |
+| `_external/mcp-servers.json` (only with MCP sync on) | Servers from `.claude.json`, tokenized like a JSON file | Applied through `claude mcp`, see section 6 |
+
+### Never captured
+
+Never captured, even inside a tracked folder. This list is fixed in code and cannot be changed in the config:
 
 ```
-.credentials.json        secrets
-projects/**              session history keyed by local path
-todos/**                 transient
-statsig/**               telemetry
-shell-snapshots/**        machine state
-ide/**                   editor binding
-logs/**, *.log           noise
-**/.DS_Store, **/Thumbs.db
+.credentials.json, .claude.json, .claude.json.backup*, .DS_Store, Thumbs.db, *.log
+projects/  todos/  statsig/  shell-snapshots/  ide/  logs/     (top-level folders)
+.git/  node_modules/  __pycache__/                              (anywhere)
+plugins/* except plugins/installed_plugins.json and plugins/known_marketplaces.json
+skills/synced/  skills/.trash/
 ```
 
-Include/exclude are overridable in the config file (`include` / `exclude` glob arrays), but the four secret/state excludes above are **hard-locked** unless `--allow-unsafe` is passed.
+The same filter guards restore, so a path in this list is never listed as a local extra and never deleted by `pull --exact`. The `_external/` folder name is reserved for non-file members and is skipped by all file handling.
 
 ---
 
 ## 3. Path tokenization
 
-Three tokens, expanded at restore time against the target machine.
+Three tokens, expanded at restore time against the machine doing the restore.
 
 | Token | Meaning |
 |---|---|
-| `${HOME}` | User home directory |
-| `${CLAUDE_HOME}` | The `.claude` directory root |
-| `${PYTHON}` | The python launcher available on the target (`python3` preferred, then `python`) |
+| `${HOME}` | The user's home directory |
+| `${CLAUDE_HOME}` | The Claude folder (`~/.claude`, or `CLAUDE_CONFIG_DIR`) |
+| `${PYTHON}` | The python launcher on the target: `python3` if found, then `python`, and `python3` if neither is on `PATH` |
 
-**Capture:** normalize the source home prefix (handle both `\` and `/`), replace any literal occurrence with the token, and store all stored-form paths with `/` separators. A Windows value `C:\\Users\\amit\\.claude\\hooks\\guard.py` becomes `${CLAUDE_HOME}/hooks/guard.py`. A leading bare `python`/`python3` launcher in a JSON command value becomes `${PYTHON}` (path-qualified interpreters are left alone).
+**Capture.** Absolute paths for the Claude folder and the home folder are matched with either separator style, and `~/.claude` is matched too when the Claude folder really is `~/.claude`. The most specific base wins, so a Claude folder inside home becomes `${CLAUDE_HOME}`. The rest of the path is stored with `/` separators. On Windows the match is case-insensitive. A Windows value `C:\Users\amit\.claude\hooks\guard.py` is stored as `${CLAUDE_HOME}/hooks/guard.py`.
 
-**Restore:** expand tokens to the target home. JSON config values can stay `/` on all three OSes. Fields that are handed to a shell (hook commands, MCP `command`/`args`) get separators converted to the native form for the target platform. `${PYTHON}` resolves to whichever launcher exists on the target, fixing the common `python` (Windows) vs `python3` (macOS/Linux) mismatch.
+A leading bare launcher (`python`, `python3`, `python3.11`, `python.exe`) in a JSON string value becomes `${PYTHON}`, but only when the value is followed by arguments and looks like a command (it has a `.py` file, a path separator or one of the path tokens). Path-qualified interpreters such as `/usr/bin/python3` or a venv path are left alone.
 
-Implement `collapse_paths(text, home)` / `expand_paths(text, home)` and `collapse_interpreter(text)` / `expand_interpreter(text, python_cmd)` in `paths.py`.
+**Restore.** Tokens expand to the target's home and Claude folder. The tail of each path is converted to the target's native separator, backslashes on Windows. `${PYTHON}` becomes the launcher found on the target, which fixes the usual `python` (Windows) against `python3` (macOS and Linux) mismatch.
 
----
-
-## 4. settings.json handling (`tokenized`)
-
-1. Parse as JSON (fail the entry cleanly if it does not parse).
-2. Walk all string values; tokenize any that contain the source home prefix.
-3. Route the `hooks` subtree to the hook handler (§6) rather than treating it as plain text.
-4. Drop nothing else: permissions, model, env keys are portable.
+The code lives in `paths.py` (`collapse_paths`, `expand_paths`, `collapse_interpreter`, `expand_interpreter`) and `content_transform.py`.
 
 ---
 
-## 5. ~/.claude.json handling (`extract`)
+## 4. settings.json and hooks
 
-`~/.claude.json` is a **sibling file**, not inside `~/.claude/`. It is large and mostly machine-bound (oauth account, project trust list keyed by absolute path, tips history, telemetry). Capture **only** the global `mcpServers` map. Do not capture `projects[*]` — project-scoped MCP belongs in each repo's `.mcp.json`, which travels with the repo.
+`settings.json` is a JSON file, so it follows the rule above: every string value gets path and interpreter tokenization. That covers hook commands and a `statusLine` command. There is no special handling of hooks beyond this.
 
-For each captured server:
-- Tokenize any paths in `command` and `args`.
-- Classify the launcher: `npx` / `node` / `python` / `python3` / absolute binary. Record it; an absolute binary path is flagged `needs_review` since it rarely survives a platform move.
-- **Strip every value under `env`.** Replace with an `${ENV:VAR_NAME}` placeholder. The actual value is resolved from the target environment on restore and is **never stored** (see §7).
+Anything else in a command is copied as written: absolute binary paths, Windows-only syntax such as `%USERPROFILE%`, `.bat` or `powershell`, and so on. After a restore across operating systems, check any command that did not use paths under the home or Claude folder. The most reliable approach is to keep hook logic in a script under `~/.claude/hooks/`, which syncs with the snapshot, and have the hook command call it.
 
-Restore **merges** these servers into the existing target `~/.claude.json`. It must not overwrite the file (local oauth/project state has to survive).
+`claude-cfg integrate install` adds a SessionStart hook (`claude-cfg session-hook start`), a SessionEnd hook (`claude-cfg session-hook end`) and the `/cfg-push` skill. All three sit in tracked paths and travel with the next push. The hook commands start with the bare `claude-cfg` launcher, so `claude-cfg` must be on the `PATH` on every machine you restore to. The `config-history` plugin's hooks live in the plugin, not in `settings.json`, and are not part of a snapshot.
 
 ---
 
-## 6. Hook portability (the hard layer)
+## 5. Snapshot manifest (schema v4)
 
-Hooks are where a naive copy breaks, especially a PreToolUse hard-enforcement layer. Three strategies, in order of preference. The tool supports all three and picks per hook.
-
-**A. Externalize (preferred).** Hook logic lives in a script file under `~/.claude/hooks/`, which syncs as `verbatim`/`tokenized`. The hook `command` is a thin, neutral invocation. Recommend authoring hooks this way. The doc's `init`/`doctor` step can offer to extract inline hook bodies into script files.
-
-**B. Per-platform variants.** Store `command` as a map keyed by platform. The manifest carries all variants; restore selects the target one.
+Each zip holds a `manifest.json`:
 
 ```json
 {
-  "command": {
-    "win32":  "python %CLAUDE_HOME%\\hooks\\guard.py",
-    "darwin": "python3 ${CLAUDE_HOME}/hooks/guard.py",
-    "linux":  "python3 ${CLAUDE_HOME}/hooks/guard.py"
-  }
-}
-```
-
-**C. Flag and warn.** If a command cannot be classified as portable and has no variant, mark the entry `needs_review: true`. Restore still writes it but emits a warning and leaves the original alongside.
-
-### Portability linter (run during capture)
-
-Scan every hook command. Non-portable signals:
-- `C:\`, drive letters, backslash path separators
-- `%USERPROFILE%`, `%APPDATA%`, other `%VAR%` Windows expansions
-- `.bat`, `.cmd`, `powershell`, `pwsh -Command`
-- bare `python ` (ambiguous; prefer `python3` on mac/linux)
-- absolute interpreter or binary paths
-
-A hit downgrades the hook from portable to `needs_review` unless a per-platform variant covers it. Normalize `python` <-> `python3` and separators automatically where the rest of the command is otherwise portable.
-
----
-
-## 7. Secret redaction (mandatory, because of the Gist backend)
-
-The Gist provider can target a public gist. Treat the snapshot as potentially world-readable.
-
-Rules:
-- `.credentials.json` is excluded by category and never enters a bundle. Full stop.
-- A redaction pass runs over **all** payload bytes before the zip is assembled.
-- Patterns to catch: `sk-`, `ghp_`/`gho_`/`github_pat_`, AWS `AKIA…`, `Bearer ` tokens, long base64/hex blobs, and any value under an MCP `env` key.
-- On hit: replace with `${ENV:NAME}` placeholder and record the placeholder in the manifest.
-- Default behavior on an unredactable secret is to **fail the push** with a clear message. `--allow-secrets` overrides for the local/SFTP/private-R2 case only; the tool refuses `--allow-secrets` when the target provider is `gist`.
-
-On restore, `${ENV:NAME}` placeholders resolve from the target environment. If a referenced variable is unset, restore proceeds and lists the missing variables in the final report rather than failing.
-
----
-
-## 8. Snapshot manifest (extends PLAN.md schema)
-
-Keep the existing zip + `index.json`. Add a per-snapshot `manifest.json` (schema v3):
-
-```json
-{
-  "schema_version": 3,
-  "created_at": "2026-06-09T10:00:00Z",
-  "claude_cfg_version": "x.y.z",
-  "source_platform": "win32",
+  "schema_version": 4,
+  "id": 12,
+  "timestamp": "2026-06-09T10:00:00Z",
+  "message": "added a skill",
+  "machine": "work-laptop",
+  "source_platform": "darwin",
   "source_home": "${HOME}",
-  "entries": [
-    { "path": "commands/review.md", "category": "verbatim", "sha256": "…" },
-    { "path": "settings.json", "category": "tokenized", "sha256": "…",
-      "transforms": ["paths", "hooks"] },
-    { "path": "claude.json#/mcpServers", "category": "extract", "sha256": "…",
-      "transforms": ["paths", "redact"] }
-  ],
-  "hooks": [
-    { "id": "PreToolUse[0]", "strategy": "variants",
-      "platforms": ["win32","darwin","linux"], "needs_review": false }
-  ],
-  "redaction": { "scanned": true, "placeholders": ["ENV:OPENAI_API_KEY"] }
+  "claude_cfg_version": "x.y.z",
+  "automatic": false,
+  "files": ["CLAUDE.md", "settings.json", "skills/review/SKILL.md"],
+  "tracked": ["settings.json", "CLAUDE.md", "commands/", "skills/"],
+  "file_hashes": { "CLAUDE.md": "<sha256 of the stored bytes>" },
+  "content_hash": "<one hash over every path and hash>"
 }
 ```
 
-Restore refuses a bundle whose `schema_version` is newer than the running tool supports, and warns (does not refuse) on older versions.
+`source_platform` is `win32`, `darwin` or `linux`, the same names the restore target uses. Manifests written before this change say `windows`, which is read as `win32`.
+
+Schema history: v1 files and message; v2 adds machine and timestamps; v3 adds the source platform and home tokens; v4 adds the tracked list and file hashes. The `automatic` field marks a version that auto-save made, which retention may delete; it is `false` for a version you save yourself. A manifest without it counts as not automatic. It did not need a new schema version.
+
+A restore refuses a snapshot whose schema is newer than the running tool supports and tells you to upgrade. It reads older ones. Snapshots before v4 have no tracked list, so the tracked list from your local config decides which local files count as extras for `--exact`. For restore decisions the hashes are recomputed from the archive, not taken from the manifest.
 
 ---
 
-## 9. Capture algorithm
+## 6. MCP servers
+
+Syncing MCP servers is opt-in (`claude-cfg config mcp --enable`). `~/.claude.json` is a sibling file of `~/.claude/` (inside `CLAUDE_CONFIG_DIR` when that is set). It is large and mostly machine-bound, so `claude-cfg` reads only the top-level `mcpServers` map, which holds user-scope servers. Project-scoped servers belong in each repo's `.mcp.json`, and local-scoped ones are not touched.
+
+On capture, each definition is stored whole in `_external/mcp-servers.json`, with paths and the python launcher tokenized. `env` values and headers are **not** stripped or replaced with placeholders, so the snapshot carries any tokens in them. See [SECURITY.md](SECURITY.md).
+
+On restore, `.claude.json` is never written. Each change is a `claude` command:
 
 ```
-1. home, claude_home = resolve_claude_home()          # paths.py
-2. rules = load_manifest(config.include, config.exclude)
-3. files = glob(rules) under claude_home (+ ~/.claude.json for extract)
-4. for f in files: category = classify(f)
-5. for f in files: entry, payload = HANDLERS[category](f, home)
-6. payload = redact(payload)                           # fail or placeholder
-7. bundle = zip(payload_files + manifest.json)
-8. provider.push(bundle, name)                         # existing layer
+claude mcp add-json <name> - --scope user      (definition on stdin)
+claude mcp remove <name> --scope user
 ```
 
-## 10. Restore algorithm
+This needs the `claude` CLI on `PATH`, version 2.1.327 or later, and the pull must run from a normal terminal, outside a Claude Code session, because `add-json` must not run inside one. These are checked first, and the whole MCP step is skipped with a reason when one fails. A replace whose add fails right after its remove puts the previous definition back. A server missing locally is added, one whose definition differs is replaced, and a server only present locally is kept unless the pull used `--exact`. If a command fails, the files are still restored and the failed server names are reported. A snapshot without a server list leaves local servers untouched.
+
+---
+
+## 7. Secrets
+
+- `.credentials.json` is excluded and never enters a snapshot.
+- There is no redaction pass. `claude-cfg` does not scan files for tokens, so a key written into `settings.json` or an MCP definition is captured as it is.
+- Encryption is the protection for the backend: the whole snapshot zip is encrypted with a passphrase (scrypt and AES-256-GCM). See [SECURITY.md](SECURITY.md) for what stays visible.
+
+Credentials are never synced. A restore of a snapshot taken on another machine ends with a reminder to run `claude` and sign in again.
+
+---
+
+## 8. Capture and restore flow
+
+Push:
 
 ```
-1. bundle = provider.pull(name)                        # existing layer
-2. manifest = read_manifest(bundle); assert_schema_compatible()
-3. plat, home, claude_home, cred = detect_target()     # paths.py
-4. if not --no-backup: backup(claude_home -> claude_home.bak.<ts>)
-5. for entry in manifest.entries:
-     RESTORE[entry.category](entry, home, plat)
-       verbatim  -> write bytes
-       tokenized -> expand_paths(); fix separators on shell fields
-       extract   -> merge mcpServers into ~/.claude.json (preserve local state);
-                    resolve ${ENV:*} from environment
-       hooks     -> pick plat variant; if needs_review, write + warn
-6. validate(): JSON-parse settings.json + ~/.claude.json
-7. report(): re-auth needed (§11), unset ${ENV:*} vars, flagged hooks
-8. exit nonzero if validate() failed (backup already exists)
+1. claude_home = CLAUDE_CONFIG_DIR or ~/.claude
+2. files = files under the tracked roots + referenced files, minus the exclusions
+3. for each file: tokenize (text) or copy (binary), record its sha256
+4. with MCP sync on: add _external/mcp-servers.json
+5. write manifest.json, build the zip
+6. encrypt if encryption is on; name the object <id>_<time>_<slug>_<hex>.zip[.enc]
+7. upload, check for an id collision with another machine, update index.json
+8. record the push in ~/.claude-cfg/state.json
 ```
 
-`--dry-run` runs steps 1 to 5 as a plan print with zero writes.
+Pull:
+
+```
+1. find the snapshot (latest, --point, or --key); fetch it; decrypt if the bytes are encrypted
+2. refuse if its schema is newer than this tool supports
+3. build a plan: create / overwrite / unchanged / only on this machine
+   (a file counts as unchanged if it is equal as written here, or equal once both are tokenized)
+   with --exact, only-local files become deletions
+4. plan the MCP servers, when MCP sync is on and the snapshot has a server list
+5. --dry-run and diff stop here
+6. check that every destination is inside the Claude folder
+7. back up the files that will be overwritten or deleted (nothing changed: no backup)
+8. write files, expanding tokens for this machine; delete for --exact
+9. apply MCP changes through the claude CLI
+10. record the pull in state.json; prune backups to backups.keep (default 10)
+```
+
+`undo` reverses steps 7 to 9 from the backup. When the pull changed MCP servers and step 9 cannot run here, `undo` refuses unless `--files-only` is passed, which reverses steps 7 and 8 and leaves step 9 for a later `undo`.
 
 ---
 
-## 11. Platform resolution table
+## 9. Platform resolution
 
-| Platform | `.claude` root | Credentials store | Native separator | Re-auth on restore |
-|---|---|---|---|---|
-| `win32` | `%USERPROFILE%\.claude` | `.credentials.json` (DPAPI-protected) | `\` | Yes |
-| `darwin` | `~/.claude` | login Keychain entry "Claude Code" | `/` | Yes |
-| `linux` | `~/.claude` | `~/.claude/.credentials.json` | `/` | Yes |
-| WSL | `~/.claude` (Linux home) | `~/.claude/.credentials.json` | `/` | Yes |
+| Platform | `.claude` root | Native separator | Re-auth on restore |
+|---|---|---|---|
+| `win32` | `%USERPROFILE%\.claude`, or `CLAUDE_CONFIG_DIR` | `\` | Yes |
+| `darwin` | `~/.claude`, or `CLAUDE_CONFIG_DIR` | `/` | Yes |
+| `linux` | `~/.claude`, or `CLAUDE_CONFIG_DIR` | `/` | Yes |
+| WSL | `~/.claude` (the Linux home), or `CLAUDE_CONFIG_DIR` | `/` | Yes |
 
-Credentials are excluded from every snapshot, so **restore always ends with "run `claude` and re-authenticate."** WSL detection: `platform.uname().release` contains `microsoft`. Treat WSL as linux but warn if the user appears to also run a Windows-native install, since the two homes diverge.
-
----
-
-## 12. Merge and conflict policy
-
-- `verbatim` / `tokenized` files are owned by the snapshot: overwrite, but only after the timestamped backup in restore step 4.
-- `~/.claude.json` is **always merged**, never overwritten. Only the captured global `mcpServers` keys are set; everything else in the target file is preserved.
-- CLI flag `--on-conflict overwrite|merge|skip` (default `overwrite` for files, `merge` is forced for `~/.claude.json` regardless).
+`CLAUDE_CONFIG_DIR` counts only when it is an absolute path. WSL is detected when `platform.uname().release` contains `microsoft`. It is treated as Linux, and a pull prints a note that this home is separate from any Windows-native `~/.claude`.
 
 ---
 
-## 13. Module touch-points
+## 10. Merge and conflict policy
 
-| File | Add |
-|---|---|
-| `paths.py` | `detect_target()`, `resolve_claude_home()`, `collapse_paths()`, `expand_paths()`, credential-mechanism lookup |
-| `snapshot.py` | `classify()`, category handlers, manifest v2 read/write, `redact()` |
-| `portability.py` (new) | hook linter + variant builder, `${ENV:*}` placeholder logic, secret patterns |
-| `core.py` | wire capture and restore pipelines onto the providers |
-| `cli.py` | flags `--dry-run`, `--on-conflict`, `--no-backup`, `--allow-secrets`; new `doctor` command (validate config + lint hooks + dry-run a capture) |
-| config schema | `include`, `exclude`, `redaction` policy, `env_passthrough` list |
+- A normal pull overwrites the files that the snapshot contains and leaves other local files alone. Overwritten files are backed up first, and `undo` can bring them back.
+- `pull --exact` also deletes tracked local files that the snapshot lacks, after you confirm.
+- `.claude.json` is never written by `claude-cfg`. MCP servers are changed by name through the `claude` CLI.
+- There is no per-file conflict flag. `diff` and `pull --dry-run` show what would be overwritten, and `status` suggests `diff` when both this machine and the backend have changed.
 
 ---
 
-## 14. Implementation order (extends PLAN.md step list)
+## 11. Edge cases
 
-1. `classify()` + the include/exclude default manifest (pure, testable).
-2. `collapse_paths()` / `expand_paths()` + `detect_target()` in `paths.py`.
-3. `verbatim` and `tokenized` handlers end to end against the local provider.
-4. `redact()` + secret-pattern tests (assert no secret survives a round trip).
-5. `extract` handler for `~/.claude.json` global mcpServers, with merge-on-restore.
-6. Hook linter + per-platform variants + `needs_review` flagging.
-7. `--dry-run`, backup, `--on-conflict`, validation report.
-8. `doctor` command.
-9. Cross-platform round-trip tests (synthesize win32/darwin/linux homes in fixtures).
+- **Credentials never sync.** Every restore prompts a re-auth. This is by design.
+- **macOS uses the Keychain, not a file.** `claude-cfg` does not touch credentials. Just run `claude` again.
+- **Project history is not portable** and is excluded. It is keyed by the local path.
+- **Symlinks.** A symlinked file is stored as the file it points to. Symlinked folders inside a tracked folder are not followed. A restore never writes or deletes through a symlink that leaves the Claude folder: such a file (a `CLAUDE.md` linked to a dotfiles repo, say) is left untouched and listed in the pull summary.
+- **Large binary assets** inside skills are copied as they are. There is no size guard, except on the Gist backend, which refuses a snapshot it could not serve back (over 10 MB as stored).
+- **Names that differ only in case.** A snapshot file is matched to a file on disk by its exact name first. Only when the Claude folder is on a case-insensitive filesystem (checked with a probe file) does `Foo.md` on disk count as the snapshot's `foo.md`. On a case-sensitive disk both names are restored as two files. `straße.md` and `strasse.md` are always two names, and trailing dots and spaces are ignored only on Windows. The exclusion list ignores case on every platform.
+- **Mixed Windows-native and WSL** on one machine means two separate `.claude` homes. Treat them as separate machines.
 
 ---
 
-## 15. Edge cases / FAQ
+## 12. The config-history plugin
 
-- **Credentials never sync.** Every restore prompts re-auth. This is by design, not a gap.
-- **macOS uses Keychain, not a file.** Do not attempt to write credentials; just tell the user to re-run `claude`.
-- **Project history is not portable** and is excluded. It is keyed by URL-encoded local path and will not map across machines.
-- **Symlinks** in `commands/`/`skills/`: resolve to real files on capture and store as files; warn so the user knows the link was flattened.
-- **Binary assets inside skills** copy verbatim as files. Add a per-entry size guard (warn above, say, 5 MB) to catch accidental large blobs.
-- **`settings.local.json`** is personal/experimental, off by default. Include it explicitly only if the user wants their local overrides to travel.
-- **Mixed Windows-native + WSL** on one machine: two separate `.claude` homes. Document that they are distinct snapshot targets.
+The plugin runs the same tool from a private Python environment, so the capture and restore rules above apply to it unchanged. What differs is the launcher.
+
+- **The launcher is a POSIX `sh` script.** `scripts/config-history-hook.sh` and `bin/config-history` need `sh`. The plugin has been tested only on macOS so far. Windows and Linux are untested, and nothing here claims they work. The plugin's unit tests run in CI, but they use fake Python executables and do not build a real environment.
+- **Python.** The launcher looks for `python3.13` down to `python3.9`, then `python3` and `python`, and uses the first that is 3.9 or later. macOS ships 3.9. On macOS it skips `/usr/bin/python3` when the command line tools are missing, so it never opens an installer dialog. With no suitable Python the plugin shows a notice and stays inactive.
+- **The environment** lives in the plugin's data folder (`CLAUDE_PLUGIN_DATA`). A pointer file, `plugin-python` in the tool's folder, tells `bin/config-history` which Python to run. The bootstrap scripts are standard library only and run on Python 3.9.
+- **`CLAUDE_CFG_HOME`** is honored by the launcher, the pointer file and the tool, so one value moves them all.
+- **`CLAUDE_CFG_PROGRAM_NAME`** is set to `config-history` for the tool the plugin runs, so notices and hints print the command the user has.
+
+---
+
+## 13. Not built
+
+Ideas from the original design that the code does not do:
+
+- Per-platform hook command variants, a portability linter and `needs_review` flags
+- A secret redaction pass with `${ENV:NAME}` placeholders, and `--allow-secrets`
+- `include` and `exclude` glob settings and an `--allow-unsafe` override
+- `--on-conflict overwrite|merge|skip` and `--no-backup`
+- A `doctor` command

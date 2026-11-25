@@ -31,4 +31,4 @@ What actually happened. Include any error output or stack trace inside a code bl
 - Backend: <local | r2 | s3 | gist | sftp>
 
 ## Additional context
-Anything else that might help — sample config (with credentials redacted), recent changes, etc.
+Anything else that might help, such as a sample config (with credentials redacted) or recent changes.
